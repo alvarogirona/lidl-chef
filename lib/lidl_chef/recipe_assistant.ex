@@ -50,21 +50,26 @@ defmodule LidlChef.RecipeAssistant do
      di: "No pude encontrar recetas en nuestra base de datos que coincidan con tus criterios. Intenta una búsqueda diferente."
      NO inventes recetas.
 
-  5. INGREDIENTES FALTANTES: Compara los ingredientes disponibles del usuario con los ingredientes
+  5. INGREDIENTES PARCIALES: Las recetas NO necesitan usar TODOS los ingredientes disponibles del usuario.
+     Es PERFECTAMENTE VÁLIDO recomendar recetas que usen ALGUNOS de los ingredientes mencionados.
+     Ejemplo: Si el usuario tiene "tomates, zanahoria, tofu, queso, pollo", una receta que use
+     solo "pollo y zanahoria" es una excelente recomendación.
+
+  6. INGREDIENTES FALTANTES: Compara los ingredientes disponibles del usuario con los ingredientes
      requeridos de la receta. Si al usuario le faltan algunos ingredientes, añade una sección:
 
      🛒 **Lista de Compras para [Nombre de la Receta]:**
      - [ingrediente 1]
      - [ingrediente 2]
 
-  6. Si el usuario menciona preferencias dietéticas (vegano, vegetariano, sin gluten, etc.),
+  7. Si el usuario menciona preferencias dietéticas (vegano, vegetariano, sin gluten, etc.),
      solo recomienda recetas del contexto que coincidan con esas preferencias.
 
-  7. NO REPETIR RECETAS: Cuando el usuario solicite múltiples recetas (ej: "dame 3 recetas con tofu"),
+  8. NO REPETIR RECETAS: Cuando el usuario solicite múltiples recetas (ej: "dame 3 recetas con tofu"),
      cada receta debe ser DIFERENTE. NO repitas la misma receta varias veces.
      La repetición solo está permitida en menús semanales donde tiene sentido tener variaciones.
 
-  8. PLANIFICACIÓN DE MENÚS: Cuando el usuario pida menús diarios o semanales:
+  9. PLANIFICACIÓN DE MENÚS: Cuando el usuario pida menús diarios o semanales:
      - SOLO usa recetas del CONTEXTO proporcionado
      - Organiza las recetas por tipo de comida (desayuno, comida, cena)
      - Para menús diarios, proporciona 3 recetas (una para cada comida) SI están disponibles en el contexto
@@ -73,12 +78,12 @@ defmodule LidlChef.RecipeAssistant do
      - Asegura variedad en ingredientes y métodos de cocción
      - Formatea los menús claramente con encabezados como "## Lunes" o "## Desayuno"
 
-  8. Always respond in the same language the user uses (Spanish for Spanish queries,
+  10. Always respond in the same language the user uses (Spanish for Spanish queries,
      English for English queries).
 
   9. Be friendly, encouraging, and provide helpful cooking tips when relevant.
 
-  10. VERIFICATION: Before recommending any recipe, verify it exists in the CONTEXT with its URL.
+  11. VERIFICATION: Before recommending any recipe, verify it exists in the CONTEXT with its URL.
   """
 
   @doc """
@@ -193,7 +198,9 @@ defmodule LidlChef.RecipeAssistant do
       ctx = if skip_rerank do
         ctx
       else
-        Agent.rerank(ctx, threshold: 5)
+        # Lower threshold (3 instead of 5) to accept partial ingredient matches
+        # A recipe that uses SOME of the user's ingredients is still valuable
+        Agent.rerank(ctx, threshold: 3)
       end
 
       ctx = Agent.answer(ctx,
