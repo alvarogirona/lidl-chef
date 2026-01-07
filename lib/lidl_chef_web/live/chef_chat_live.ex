@@ -120,6 +120,20 @@ defmodule LidlChefWeb.ChefChatLive do
               </button>
               <button
                 phx-click="send_suggestion"
+                phx-value-message="Quiero que me sugieras un menú diario (desayuno, comida y cena) vegano. ¿Qué recetas me recomiendas?"
+                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left"
+              >
+                <span class="text-gray-700">"Quiero que me sugieras un menú diario vegano"</span>
+              </button>
+              <button
+                phx-click="send_suggestion"
+                phx-value-message="Puedes darme un menú semanal variado alto en proteínas?"
+                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left"
+              >
+                <span class="text-gray-700">"Puedes darme un menú semanal variado alto en proteínas?"</span>
+              </button>
+              <button
+                phx-click="send_suggestion"
                 phx-value-message="Tengo tofu y naranja, quiero preparar una comida vegana"
                 class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
               >
@@ -214,6 +228,7 @@ defmodule LidlChefWeb.ChefChatLive do
     |> String.replace(~r/(<li.*<\/li>)+/s, "<ul class=\"list-disc my-2\">\\0</ul>")
     |> String.replace(~r/\n\n/, "</p><p class=\"my-2\">")
     |> then(&"<p class=\"my-2\">#{&1}</p>")
-    |> String.replace(~r/(https:\/\/[^\s<]+)/, "<a href=\"\\1\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>")
+    # Only convert plain URLs that are NOT already inside HTML tags (negative lookbehind)
+    |> String.replace(~r/(?<!href=")(?<!">)(https?:\/\/[^\s<)"]+)(?![^<]*<\/a>)/, "<a href=\"\\1\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>")
   end
 end
