@@ -27,6 +27,7 @@ defmodule LidlChefWeb.Router do
 
     get "/", PageController, :home
     live "/recipes", RecipeLive
+    live "/chat", ChefChatLive
   end
 
   # Other scopes may use custom stacks.

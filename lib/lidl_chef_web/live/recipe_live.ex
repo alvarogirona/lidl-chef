@@ -91,12 +91,17 @@ defmodule LidlChefWeb.RecipeLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={nil}>
+    <Layouts.app flash={@flash} current_scope={%{}}>
       <div class="max-w-6xl mx-auto p-6">
         <div class="text-center mb-8">
           <h1 class="text-4xl font-bold text-gray-900 mb-2">🛒 Lidl Chef</h1>
           <p class="text-xl text-gray-600">AI-Powered Recipe Discovery System</p>
           <p class="text-sm text-gray-500 mt-2">Search through 1,500+ Lidl recipes using AI embeddings</p>
+          <div class="mt-4">
+            <.link navigate="/chat" class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+              👨‍🍳 Chat with AI Chef
+            </.link>
+          </div>
         </div>
 
         <!-- Search Form -->
