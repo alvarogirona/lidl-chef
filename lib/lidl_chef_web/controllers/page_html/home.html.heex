@@ -1,0 +1,155 @@
+<Layouts.app flash={@flash} current_scope={nil}>
+  <div class="bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 min-h-screen">
+    <!-- Hero Section -->
+    <div class="hero bg-gradient-to-r from-blue-600 to-purple-600 text-white py-20">
+      <div class="hero-content text-center">
+        <div class="max-w-md">
+          <h1 class="text-5xl font-bold">🍽️ Lidl Chef</h1>
+          <p class="py-6 text-xl">
+            Discover amazing recipes from the Lidl collection with AI-powered recommendations.
+            Find recipes by ingredients you have, get smart suggestions, and explore delicious meals!
+          </p>
+          <div class="flex gap-4 justify-center">
+            <.link navigate="/recipes" class="btn btn-primary btn-lg">
+              🔍 Search Recipes
+            </.link>
+            <.link navigate="/arcana" class="btn btn-outline btn-lg">
+              📊 View Dashboard
+            </.link>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="py-16 bg-white">
+      <div class="container mx-auto px-4">
+        <h2 class="text-4xl font-bold text-center mb-12 text-gray-800">What You Can Do</h2>
+        <div class="grid md:grid-cols-3 gap-8">
+          <!-- Feature 1 -->
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body text-center">
+              <h3 class="card-title text-2xl mb-4 justify-center">🥘 Recipe Search</h3>
+              <p class="text-gray-600">
+                Search through 1,500+ Lidl recipes using semantic AI search. 
+                Find exactly what you're craving!
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 2 -->
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body text-center">
+              <h3 class="card-title text-2xl mb-4 justify-center">🥕 Ingredient Match</h3>
+              <p class="text-gray-600">
+                Have ingredients but not sure what to cook? 
+                Find perfect recipes that match what you have at home!
+              </p>
+            </div>
+          </div>
+
+          <!-- Feature 3 -->
+          <div class="card bg-base-100 shadow-xl">
+            <div class="card-body text-center">
+              <h3 class="card-title text-2xl mb-4 justify-center">🤖 AI Assistant</h3>
+              <p class="text-gray-600">
+                Get personalized recipe recommendations powered by 
+                advanced AI and vector search technology.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Statistics Section -->
+    <div class="py-16 bg-gradient-to-r from-green-100 to-blue-100">
+      <div class="container mx-auto px-4 text-center">
+        <h2 class="text-4xl font-bold mb-8 text-gray-800">Our Recipe Collection</h2>
+        <div class="stats stats-vertical lg:stats-horizontal shadow-lg">
+          <div class="stat">
+            <div class="stat-figure text-primary">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+              </svg>
+            </div>
+            <div class="stat-title">Total Recipes</div>
+            <div class="stat-value text-primary">1,500+</div>
+            <div class="stat-desc">Curated from Lidl</div>
+          </div>
+          
+          <div class="stat">
+            <div class="stat-figure text-secondary">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 100 4m0-4v2m0-6V4"></path>
+              </svg>
+            </div>
+            <div class="stat-title">Categories</div>
+            <div class="stat-value text-secondary">25+</div>
+            <div class="stat-desc">Different cuisines</div>
+          </div>
+          
+          <div class="stat">
+            <div class="stat-figure text-accent">
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="inline-block w-8 h-8 stroke-current">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"></path>
+              </svg>
+            </div>
+            <div class="stat-title">AI Powered</div>
+            <div class="stat-value text-accent">100%</div>
+            <div class="stat-desc">Vector search</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Quick Actions -->
+    <div class="py-16 bg-white">
+      <div class="container mx-auto px-4">
+        <h2 class="text-4xl font-bold text-center mb-12 text-gray-800">Get Started</h2>
+        <div class="grid md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+          <div class="card bg-gradient-to-br from-orange-400 to-red-500 text-white shadow-xl">
+            <div class="card-body text-center">
+              <h3 class="card-title text-2xl mb-4 justify-center">🔍 Smart Search</h3>
+              <p class="mb-6">
+                Use our AI-powered search to find recipes by description, cuisine, or cooking style.
+              </p>
+              <.link navigate="/recipes" class="btn btn-white btn-outline">
+                Start Searching
+              </.link>
+            </div>
+          </div>
+
+          <div class="card bg-gradient-to-br from-green-400 to-teal-500 text-white shadow-xl">
+            <div class="card-body text-center">
+              <h3 class="card-title text-2xl mb-4 justify-center">📊 System Dashboard</h3>
+              <p class="mb-6">
+                Explore the technical side - see embeddings, vector chunks, and system statistics.
+              </p>
+              <.link navigate="/arcana" class="btn btn-white btn-outline">
+                View Dashboard
+              </.link>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Footer -->
+    <footer class="footer footer-center p-10 bg-base-200 text-base-content rounded">
+      <div class="grid grid-flow-col gap-4">
+        <.link navigate="/recipes" class="link link-hover">Recipes</.link>
+        <.link navigate="/arcana" class="link link-hover">Dashboard</.link>
+      </div>
+      <div>
+        <p class="font-semibold">🍽️ Lidl Chef - AI-Powered Recipe Discovery</p>
+        <p>Built with Phoenix LiveView, Arcana RAG, and Vector Search</p>
+      </div>
+      <div>
+        <p class="text-sm opacity-70">
+          Powered by BAAI/bge-small-en-v1.5 embeddings and LM Studio
+        </p>
+      </div>
+    </footer>
+  </div>
+</Layouts.app>
