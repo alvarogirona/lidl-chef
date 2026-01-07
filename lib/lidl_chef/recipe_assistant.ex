@@ -60,7 +60,11 @@ defmodule LidlChef.RecipeAssistant do
   6. Si el usuario menciona preferencias dietéticas (vegano, vegetariano, sin gluten, etc.),
      solo recomienda recetas del contexto que coincidan con esas preferencias.
 
-  7. PLANIFICACIÓN DE MENÚS: Cuando el usuario pida menús diarios o semanales:
+  7. NO REPETIR RECETAS: Cuando el usuario solicite múltiples recetas (ej: "dame 3 recetas con tofu"),
+     cada receta debe ser DIFERENTE. NO repitas la misma receta varias veces.
+     La repetición solo está permitida en menús semanales donde tiene sentido tener variaciones.
+
+  8. PLANIFICACIÓN DE MENÚS: Cuando el usuario pida menús diarios o semanales:
      - SOLO usa recetas del CONTEXTO proporcionado
      - Organiza las recetas por tipo de comida (desayuno, comida, cena)
      - Para menús diarios, proporciona 3 recetas (una para cada comida) SI están disponibles en el contexto
@@ -425,9 +429,7 @@ defmodule LidlChef.RecipeAssistant do
   end
 
   defp build_agentic_prompt(question, chunks) do
-    Logger.debug("build_agentic_prompt called with #{length(chunks)} chunks")
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
-    Logger.debug("Reference material length: #{String.length(reference_material)} chars")
 
     """
     #{@agentic_system_prompt}
