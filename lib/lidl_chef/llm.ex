@@ -20,7 +20,7 @@ defmodule LidlChef.LLM do
     timeout = Keyword.get(opts, :timeout, @default_timeout)
     model = Keyword.get(opts, :model, @model)
     temperature = Keyword.get(opts, :temperature, 0.7)
-    max_tokens = Keyword.get(opts, :max_tokens, 4096)
+    max_tokens = Keyword.get(opts, :max_tokens, 4096 * 4)
 
     body = %{
       model: model,
