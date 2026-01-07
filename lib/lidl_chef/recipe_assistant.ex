@@ -27,45 +27,47 @@ defmodule LidlChef.RecipeAssistant do
   """
 
   @agentic_system_prompt """
-  You are a Lidl Chef assistant. Your goal is to help users discover delicious recipes
-  from the Lidl recipe collection based on their available ingredients and preferences.
+  Eres un asistente de Lidl Chef. Tu objetivo es ayudar a los usuarios a descubrir recetas deliciosas
+  de la colección de recetas de Lidl basadas en sus ingredientes disponibles y preferencias.
 
-  ⚠️ CRITICAL: You MUST ONLY recommend recipes that are explicitly provided in the CONTEXT below.
-  DO NOT invent, make up, or suggest any recipes that are not in the context.
-  DO NOT generate recipe names or URLs from your training data.
+  ⚠️ IMPORTANTE: Debes responder SIEMPRE en español.
 
-  STRICT RULES:
-  1. ONLY use recipes from the CONTEXT provided below
-  2. For each recipe you recommend, you MUST:
-     - Copy the EXACT recipe name as it appears in the context
-     - Copy the EXACT complete URL from the context (always from recetas.lidl.es domain)
-     - NEVER create or modify URLs
+  ⚠️ CRÍTICO: SOLO debes recomendar recetas que estén explícitamente provistas en el CONTEXTO a continuación.
+  NO inventes, crees o sugieras recetas que no estén en el contexto.
+  NO generes nombres de recetas o URLs de tus datos de entrenamiento.
 
-  3. Format your recommendations like this:
-     "I recommend trying **[Recipe Name]** ([URL]). This dish..."
+  REGLAS ESTRICTAS:
+  1. SOLO usa recetas del CONTEXTO proporcionado a continuación
+  2. Para cada receta que recomiendes, DEBES:
+     - Copiar el nombre EXACTO de la receta como aparece en el contexto
+     - Copiar la URL completa EXACTA del contexto (siempre del dominio recetas.lidl.es)
+     - NUNCA crear o modificar URLs
 
-  4. If you cannot find suitable recipes in the context that match the user's request,
-     say: "I couldn't find recipes in our database that match your criteria. Try a different search."
-     DO NOT make up recipes.
+  3. Formatea tus recomendaciones así:
+     "Te recomiendo probar **[Nombre de la Receta]** ([URL]). Este plato..."
 
-  5. MISSING INGREDIENTS: Compare the user's available ingredients with the recipe's
-     required ingredients. If the user is missing some ingredients, add a section:
+  4. Si no puedes encontrar recetas adecuadas en el contexto que coincidan con la solicitud del usuario,
+     di: "No pude encontrar recetas en nuestra base de datos que coincidan con tus criterios. Intenta una búsqueda diferente."
+     NO inventes recetas.
 
-     🛒 **Shopping List for [Recipe Name]:**
-     - [ingredient 1]
-     - [ingredient 2]
+  5. INGREDIENTES FALTANTES: Compara los ingredientes disponibles del usuario con los ingredientes
+     requeridos de la receta. Si al usuario le faltan algunos ingredientes, añade una sección:
 
-  6. If the user mentions dietary preferences (vegan, vegetarian, gluten-free, etc.),
-     only recommend recipes from the context that match those preferences.
+     🛒 **Lista de Compras para [Nombre de la Receta]:**
+     - [ingrediente 1]
+     - [ingrediente 2]
 
-  7. MENU PLANNING: When the user asks for daily or weekly menus:
-     - ONLY use recipes from the provided CONTEXT
-     - Organize recipes by meal type (breakfast/desayuno, lunch/comida, dinner/cena)
-     - For daily menus, provide 3 recipes (one for each meal) IF available in context
-     - For weekly menus, provide varied recipes across different days IF available in context
-     - If not enough recipes are available in the context, explain this to the user
-     - Ensure variety in ingredients and cooking methods
-     - Format menus clearly with headers like "## Monday / Lunes" or "## Breakfast / Desayuno"
+  6. Si el usuario menciona preferencias dietéticas (vegano, vegetariano, sin gluten, etc.),
+     solo recomienda recetas del contexto que coincidan con esas preferencias.
+
+  7. PLANIFICACIÓN DE MENÚS: Cuando el usuario pida menús diarios o semanales:
+     - SOLO usa recetas del CONTEXTO proporcionado
+     - Organiza las recetas por tipo de comida (desayuno, comida, cena)
+     - Para menús diarios, proporciona 3 recetas (una para cada comida) SI están disponibles en el contexto
+     - Para menús semanales, proporciona recetas variadas en diferentes días SI están disponibles en el contexto
+     - Si no hay suficientes recetas disponibles en el contexto, explica esto al usuario
+     - Asegura variedad en ingredientes y métodos de cocción
+     - Formatea los menús claramente con encabezados como "## Lunes" o "## Desayuno"
 
   8. Always respond in the same language the user uses (Spanish for Spanish queries,
      English for English queries).
@@ -110,7 +112,7 @@ defmodule LidlChef.RecipeAssistant do
   # Detect menu queries and adjust limit accordingly
   defp adjust_limit_for_query(question, opts) do
     lower_question = String.downcase(question)
-    is_menu_query = String.contains?(lower_question, ["menú", "menu", "semanal", "weekly", "semana", "week", "diario", "daily", "día", "day"])
+    is_menu_query = String.contains?(lower_question, ["menú", "menu", "semanal", "semana", "diario", "día"])
 
     # Adjust limit if not explicitly set
     opts = if Keyword.has_key?(opts, :limit) do
@@ -118,11 +120,11 @@ defmodule LidlChef.RecipeAssistant do
     else
       cond do
         # Weekly menu queries need more recipes (7 days * 3 meals = 21)
-        String.contains?(lower_question, ["semanal", "weekly", "semana", "week"]) ->
+        String.contains?(lower_question, ["semanal", "semana"]) ->
           Keyword.put(opts, :limit, 30)
 
         # Daily menu queries need recipes for 3 meals
-        String.contains?(lower_question, ["diario", "daily", "día", "day", "desayuno", "comida", "cena", "breakfast", "lunch", "dinner"]) ->
+        String.contains?(lower_question, ["diario", "día", "desayuno", "comida", "cena"]) ->
           Keyword.put(opts, :limit, 15)
 
         # Default
@@ -241,10 +243,10 @@ defmodule LidlChef.RecipeAssistant do
 
   defp extract_dietary_filter(question) do
     cond do
-      String.contains?(question, ["vegano", "vegan"]) -> "vegano vegan"
-      String.contains?(question, ["vegetariano", "vegetarian"]) -> "vegetariano vegetarian"
-      String.contains?(question, ["sin gluten", "gluten-free", "gluten free"]) -> "sin gluten"
-      String.contains?(question, ["bajo en calorías", "low calorie", "light"]) -> "light bajo calorías"
+      String.contains?(question, ["vegano"]) -> "vegano"
+      String.contains?(question, ["vegetariano"]) -> "vegetariano"
+      String.contains?(question, ["sin gluten", "celiaco"]) -> "sin gluten"
+      String.contains?(question, ["bajo en calorías", "light", "ligero"]) -> "light bajo calorías"
       true -> nil
     end
   end
@@ -252,7 +254,7 @@ defmodule LidlChef.RecipeAssistant do
   defp build_menu_search_queries(question, dietary_filter) do
     base_queries = [
       # Breakfast queries
-      "desayuno breakfast tostada smoothie zumo cereales",
+      "desayuno tostada smoothie zumo cereales",
       "desayuno ligero fruta yogur muesli",
       # Lunch queries
       "comida almuerzo ensalada plato principal",
@@ -423,24 +425,26 @@ defmodule LidlChef.RecipeAssistant do
   end
 
   defp build_agentic_prompt(question, chunks) do
+    Logger.debug("build_agentic_prompt called with #{length(chunks)} chunks")
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    Logger.debug("Reference material length: #{String.length(reference_material)} chars")
 
     """
     #{@agentic_system_prompt}
 
-    ===== CONTEXT (Recipe Documents from recetas.lidl.es) =====
+    ===== CONTEXTO (Documentos de Recetas de recetas.lidl.es) =====
     #{reference_material}
-    ===== END OF CONTEXT =====
+    ===== FIN DEL CONTEXTO =====
 
-    USER QUESTION: "#{question}"
+    PREGUNTA DEL USUARIO: "#{question}"
 
-    REMEMBER:
-    - ONLY recommend recipes that appear in the CONTEXT above
-    - Copy recipe names and URLs EXACTLY as they appear
-    - All URLs must be from recetas.lidl.es domain
-    - If no suitable recipes are in the context, say so - DO NOT invent recipes
+    RECUERDA:
+    - SOLO recomienda recetas que aparezcan en el CONTEXTO anterior
+    - Copia los nombres de recetas y URLs EXACTAMENTE como aparecen
+    - Todas las URLs deben ser del dominio recetas.lidl.es
+    - Si no hay recetas adecuadas en el contexto, dilo - NO inventes recetas
 
-    Provide a helpful response using ONLY the recipes from the context above.
+    Proporciona una respuesta útil usando SOLO las recetas del contexto anterior.
     """
   end
 end

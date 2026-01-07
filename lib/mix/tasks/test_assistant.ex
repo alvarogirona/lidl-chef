@@ -88,8 +88,13 @@ defmodule Mix.Tasks.TestAssistant do
         &validate_has_recipes/1
       },
       {
-        "Ingredient search - English",
-        fn -> RecipeAssistant.ask("What can I make with chicken and vegetables?") end,
+        "Ingredient search - pescado y verduras",
+        fn -> RecipeAssistant.ask("Qué puedo hacer con pescado y verduras?") end,
+        &validate_has_recipes/1
+      },
+      {
+        "Ingredient search - legumbres",
+        fn -> RecipeAssistant.ask("Recetas con lentejas o garbanzos") end,
         &validate_has_recipes/1
       },
       {
@@ -103,8 +108,23 @@ defmodule Mix.Tasks.TestAssistant do
         &validate_has_recipes/1
       },
       {
+        "Dietary restriction - sin gluten",
+        fn -> RecipeAssistant.ask("Recetas sin gluten para celiacos") end,
+        &validate_has_recipes/1
+      },
+      {
         "Quick recipe search",
         fn -> RecipeAssistant.ask("Receta rápida y fácil para cenar") end,
+        &validate_has_recipes/1
+      },
+      {
+        "Dessert search",
+        fn -> RecipeAssistant.ask("Postres fáciles con fruta") end,
+        &validate_has_recipes/1
+      },
+      {
+        "Breakfast search",
+        fn -> RecipeAssistant.ask("Ideas para desayunos saludables") end,
         &validate_has_recipes/1
       }
     ]
@@ -131,6 +151,11 @@ defmodule Mix.Tasks.TestAssistant do
         &validate_daily_menu/1
       },
       {
+        "Daily vegetarian menu",
+        fn -> RecipeAssistant.ask("Menú del día vegetariano completo") end,
+        &validate_daily_menu/1
+      },
+      {
         "Weekly menu",
         fn -> RecipeAssistant.ask("Dame un menú semanal variado para 2 personas") end,
         &validate_weekly_menu/1
@@ -141,8 +166,13 @@ defmodule Mix.Tasks.TestAssistant do
         &validate_weekly_menu/1
       },
       {
-        "Weekly menu - English",
-        fn -> RecipeAssistant.ask("Give me a weekly meal plan with variety") end,
+        "Weekly menu with variety",
+        fn -> RecipeAssistant.ask("Menú semanal equilibrado con mucha variedad") end,
+        &validate_weekly_menu/1
+      },
+      {
+        "Weekly healthy menu",
+        fn -> RecipeAssistant.ask("Menú semanal saludable y ligero") end,
         &validate_weekly_menu/1
       }
     ]
