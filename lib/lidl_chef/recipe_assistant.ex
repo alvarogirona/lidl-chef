@@ -119,11 +119,11 @@ defmodule LidlChef.RecipeAssistant do
       cond do
         # Weekly menu queries need more recipes (7 days * 3 meals = 21)
         String.contains?(lower_question, ["semanal", "weekly", "semana", "week"]) ->
-          Keyword.put(opts, :limit, 20)
+          Keyword.put(opts, :limit, 30)
 
         # Daily menu queries need recipes for 3 meals
         String.contains?(lower_question, ["diario", "daily", "día", "day", "desayuno", "comida", "cena", "breakfast", "lunch", "dinner"]) ->
-          Keyword.put(opts, :limit, 10)
+          Keyword.put(opts, :limit, 15)
 
         # Default
         true ->
@@ -131,10 +131,10 @@ defmodule LidlChef.RecipeAssistant do
       end
     end
 
-    # For menu queries: disable reranking (it processes chunks one-by-one with LLM, filtering them individually)
-    # and disable self-correction (same issue)
+    # For menu queries: enable multi-search, disable reranking and self-correction
     if is_menu_query do
       opts
+      |> Keyword.put_new(:multi_search, true)
       |> Keyword.put_new(:skip_rerank, true)
       |> Keyword.put_new(:self_correct, false)
     else
@@ -169,12 +169,18 @@ defmodule LidlChef.RecipeAssistant do
     limit = Keyword.get(opts, :limit, 5)
     self_correct = Keyword.get(opts, :self_correct, true)
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    use_multi_search = Keyword.get(opts, :multi_search, false)
 
     try do
-      ctx =
-        Agent.new(question, repo: Repo)
+      ctx = Agent.new(question, repo: Repo)
         |> Agent.expand()
-        |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: false)
+
+      # For menu queries, use multi-search to gather more diverse recipes
+      ctx = if use_multi_search do
+        multi_search_for_menus(ctx, question, limit)
+      else
+        Agent.search(ctx, collection: Recipes.collection_name(), limit: limit, graph: false)
+      end
 
       # Skip reranking for menu queries - it processes each chunk individually with LLM
       # which filters out recipes before the LLM can see them all together
@@ -196,6 +202,112 @@ defmodule LidlChef.RecipeAssistant do
       end
     rescue
       e -> {:error, {:agent_error, Exception.message(e)}}
+    end
+  end
+
+  # Multi-search strategy for menu queries to gather diverse recipes
+  defp multi_search_for_menus(ctx, question, target_limit) do
+    lower_question = String.downcase(question)
+
+    # Extract dietary restrictions from the question
+    dietary_filter = extract_dietary_filter(lower_question)
+
+    # Define search queries for different meal types and variety
+    search_queries = build_menu_search_queries(lower_question, dietary_filter)
+
+    # Perform multiple searches and collect unique chunks
+    limit_per_query = max(div(target_limit, length(search_queries)) + 2, 5)
+
+    all_chunks =
+      search_queries
+      |> Enum.flat_map(fn query ->
+        search_single(query, limit_per_query)
+      end)
+      |> deduplicate_chunks()
+      |> Enum.take(target_limit * 2)  # Take more than needed to ensure variety
+
+    Logger.debug("Multi-search collected #{length(all_chunks)} unique chunks for menu query")
+
+    # Update context with combined results - matching the exact structure Arcana expects
+    %{ctx |
+      results: [%{
+        question: ctx.question,
+        collection: Recipes.collection_name(),
+        chunks: all_chunks,
+        iterations: 1
+      }]
+    }
+  end
+
+  defp extract_dietary_filter(question) do
+    cond do
+      String.contains?(question, ["vegano", "vegan"]) -> "vegano vegan"
+      String.contains?(question, ["vegetariano", "vegetarian"]) -> "vegetariano vegetarian"
+      String.contains?(question, ["sin gluten", "gluten-free", "gluten free"]) -> "sin gluten"
+      String.contains?(question, ["bajo en calorías", "low calorie", "light"]) -> "light bajo calorías"
+      true -> nil
+    end
+  end
+
+  defp build_menu_search_queries(question, dietary_filter) do
+    base_queries = [
+      # Breakfast queries
+      "desayuno breakfast tostada smoothie zumo cereales",
+      "desayuno ligero fruta yogur muesli",
+      # Lunch queries
+      "comida almuerzo ensalada plato principal",
+      "arroz pasta legumbres comida",
+      "pollo carne pescado principal",
+      # Dinner queries
+      "cena ligera sopa crema",
+      "cena pescado verduras",
+      "cena rápida fácil",
+      # Variety
+      "postre dulce fruta",
+      "snack merienda tentempié"
+    ]
+
+    # Add dietary filter to each query if present
+    queries = if dietary_filter do
+      Enum.map(base_queries, fn q -> "#{q} #{dietary_filter}" end)
+    else
+      base_queries
+    end
+
+    # Also add the original question context
+    original_terms = question
+      |> String.replace(~r/[^\w\s]/, "")
+      |> String.split()
+      |> Enum.reject(&(String.length(&1) < 3))
+      |> Enum.take(5)
+      |> Enum.join(" ")
+
+    if original_terms != "" do
+      [original_terms | queries]
+    else
+      queries
+    end
+  end
+
+  defp search_single(query, limit) do
+    case Recipes.search(query, limit: limit, graph: false, mode: :hybrid) do
+      {:ok, chunks} -> chunks
+      _ -> []
+    end
+  end
+
+  defp deduplicate_chunks(chunks) do
+    chunks
+    |> Enum.uniq_by(fn chunk ->
+      # Deduplicate by document_id or by extracting title from text
+      chunk.document_id || extract_title_from_chunk(chunk.text)
+    end)
+  end
+
+  defp extract_title_from_chunk(text) do
+    case Regex.run(~r/Recipe:\s*(.+?)(?:\n|$)/i, text) do
+      [_, title] -> String.trim(title)
+      _ -> text  # Fallback to full text if no title found
     end
   end
 
