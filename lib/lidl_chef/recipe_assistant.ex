@@ -30,30 +30,49 @@ defmodule LidlChef.RecipeAssistant do
   You are a Lidl Chef assistant. Your goal is to help users discover delicious recipes
   from the Lidl recipe collection based on their available ingredients and preferences.
 
-  Use the CONTEXT provided (recipe documents) to suggest meals.
+  ⚠️ CRITICAL: You MUST ONLY recommend recipes that are explicitly provided in the CONTEXT below.
+  DO NOT invent, make up, or suggest any recipes that are not in the context.
+  DO NOT generate recipe names or URLs from your training data.
 
-  IMPORTANT RULES:
-  1. For each recipe you recommend, you MUST include:
-     - The exact recipe name as it appears in the context
-     - The complete URL to the recipe (from the context)
+  STRICT RULES:
+  1. ONLY use recipes from the CONTEXT provided below
+  2. For each recipe you recommend, you MUST:
+     - Copy the EXACT recipe name as it appears in the context
+     - Copy the EXACT complete URL from the context (always from recetas.lidl.es domain)
+     - NEVER create or modify URLs
 
-  2. Format your recommendations like this:
+  3. Format your recommendations like this:
      "I recommend trying **[Recipe Name]** ([URL]). This dish..."
 
-  3. MISSING INGREDIENTS: Compare the user's available ingredients with the recipe's
+  4. If you cannot find suitable recipes in the context that match the user's request,
+     say: "I couldn't find recipes in our database that match your criteria. Try a different search."
+     DO NOT make up recipes.
+
+  5. MISSING INGREDIENTS: Compare the user's available ingredients with the recipe's
      required ingredients. If the user is missing some ingredients, add a section:
 
      🛒 **Shopping List for [Recipe Name]:**
      - [ingredient 1]
      - [ingredient 2]
 
-  4. If the user mentions dietary preferences (vegan, vegetarian, gluten-free, etc.),
-     only recommend recipes that match those preferences.
+  6. If the user mentions dietary preferences (vegan, vegetarian, gluten-free, etc.),
+     only recommend recipes from the context that match those preferences.
 
-  5. Always respond in the same language the user uses (Spanish for Spanish queries,
+  7. MENU PLANNING: When the user asks for daily or weekly menus:
+     - ONLY use recipes from the provided CONTEXT
+     - Organize recipes by meal type (breakfast/desayuno, lunch/comida, dinner/cena)
+     - For daily menus, provide 3 recipes (one for each meal) IF available in context
+     - For weekly menus, provide varied recipes across different days IF available in context
+     - If not enough recipes are available in the context, explain this to the user
+     - Ensure variety in ingredients and cooking methods
+     - Format menus clearly with headers like "## Monday / Lunes" or "## Breakfast / Desayuno"
+
+  8. Always respond in the same language the user uses (Spanish for Spanish queries,
      English for English queries).
 
-  6. Be friendly, encouraging, and provide helpful cooking tips when relevant.
+  9. Be friendly, encouraging, and provide helpful cooking tips when relevant.
+
+  10. VERIFICATION: Before recommending any recipe, verify it exists in the CONTEXT with its URL.
   """
 
   @doc """
@@ -78,10 +97,48 @@ defmodule LidlChef.RecipeAssistant do
   def ask(question, opts \\ []) do
     use_simple = Keyword.get(opts, :simple, false)
 
-    if use_simple do
-      simple_ask(question, opts)
-    else
+    # Auto-detect menu queries and increase limit if not explicitly set
+    opts = adjust_limit_for_query(question, opts)
+
+    # if use_simple do
+    #  simple_ask(question, opts)
+    # else
       agentic_ask(question, opts)
+    # end
+  end
+
+  # Detect menu queries and adjust limit accordingly
+  defp adjust_limit_for_query(question, opts) do
+    lower_question = String.downcase(question)
+    is_menu_query = String.contains?(lower_question, ["menú", "menu", "semanal", "weekly", "semana", "week", "diario", "daily", "día", "day"])
+
+    # Adjust limit if not explicitly set
+    opts = if Keyword.has_key?(opts, :limit) do
+      opts
+    else
+      cond do
+        # Weekly menu queries need more recipes (7 days * 3 meals = 21)
+        String.contains?(lower_question, ["semanal", "weekly", "semana", "week"]) ->
+          Keyword.put(opts, :limit, 20)
+
+        # Daily menu queries need recipes for 3 meals
+        String.contains?(lower_question, ["diario", "daily", "día", "day", "desayuno", "comida", "cena", "breakfast", "lunch", "dinner"]) ->
+          Keyword.put(opts, :limit, 10)
+
+        # Default
+        true ->
+          Keyword.put(opts, :limit, 5)
+      end
+    end
+
+    # For menu queries: disable reranking (it processes chunks one-by-one with LLM, filtering them individually)
+    # and disable self-correction (same issue)
+    if is_menu_query do
+      opts
+      |> Keyword.put_new(:skip_rerank, true)
+      |> Keyword.put_new(:self_correct, false)
+    else
+      opts
     end
   end
 
@@ -111,18 +168,27 @@ defmodule LidlChef.RecipeAssistant do
   defp agentic_ask(question, opts) do
     limit = Keyword.get(opts, :limit, 5)
     self_correct = Keyword.get(opts, :self_correct, true)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
 
     try do
       ctx =
         Agent.new(question, repo: Repo)
         |> Agent.expand()
         |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: false)
-        |> Agent.rerank(threshold: 5)
-        |> Agent.answer(
-          repo: Repo,
-          prompt: &build_agentic_prompt/2,
-          self_correct: self_correct
-        )
+
+      # Skip reranking for menu queries - it processes each chunk individually with LLM
+      # which filters out recipes before the LLM can see them all together
+      ctx = if skip_rerank do
+        ctx
+      else
+        Agent.rerank(ctx, threshold: 5)
+      end
+
+      ctx = Agent.answer(ctx,
+        repo: Repo,
+        prompt: &build_agentic_prompt/2,
+        self_correct: self_correct
+      )
 
       case ctx.answer do
         nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
@@ -250,12 +316,19 @@ defmodule LidlChef.RecipeAssistant do
     """
     #{@agentic_system_prompt}
 
-    CONTEXT (Recipe Documents):
+    ===== CONTEXT (Recipe Documents from recetas.lidl.es) =====
     #{reference_material}
+    ===== END OF CONTEXT =====
 
     USER QUESTION: "#{question}"
 
-    Provide a helpful response using the recipes from the context. Remember to include recipe names and URLs in your recommendations.
+    REMEMBER:
+    - ONLY recommend recipes that appear in the CONTEXT above
+    - Copy recipe names and URLs EXACTLY as they appear
+    - All URLs must be from recetas.lidl.es domain
+    - If no suitable recipes are in the context, say so - DO NOT invent recipes
+
+    Provide a helpful response using ONLY the recipes from the context above.
     """
   end
 end
