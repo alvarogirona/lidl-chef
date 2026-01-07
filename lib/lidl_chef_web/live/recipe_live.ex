@@ -136,7 +136,7 @@ defmodule LidlChefWeb.RecipeLive do
               />
               <button
                 phx-click="ingredient_search"
-                phx-value-ingredients={elem(List.first(Phoenix.HTML.Safe.to_iodata(Phoenix.HTML.Tag.tag(:input, [value: ""]))) || {"", ""}, 1)}
+                phx-value-ingredients=""
                 onclick="this.setAttribute('phx-value-ingredients', document.getElementById('ingredients-input').value)"
                 class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
                 disabled={@loading}

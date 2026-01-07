@@ -7,7 +7,7 @@ defmodule LidlChef.LLM do
   """
 
   @base_url "http://127.0.0.1:1234"
-  @model "qwen/qwen3-next-80b"
+  @model "qwen/qwen3-coder-30b"
   @default_timeout 120_000
 
   @doc """

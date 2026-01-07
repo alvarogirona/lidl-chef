@@ -236,13 +236,15 @@ defmodule LidlChef.Recipes do
   @spec find_by_ingredients(list(String.t()), keyword()) :: {:ok, list(map())} | {:error, term()}
   def find_by_ingredients(ingredients, opts \\ []) when is_list(ingredients) do
     limit = Keyword.get(opts, :limit, 10)
+    graph = Keyword.get(opts, :graph, false)
+    mode = Keyword.get(opts, :mode, :hybrid)
 
     query = """
     Recipes that can be made with: #{Enum.join(ingredients, ", ")}.
     Looking for dishes that use these ingredients as main components.
     """
 
-    search(query, limit: limit, graph: true, mode: :hybrid)
+    search(query, limit: limit, graph: graph, mode: mode)
   end
 
   @doc """

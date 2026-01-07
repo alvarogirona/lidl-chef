@@ -62,11 +62,6 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
-# Configure OpenAI client for LM Studio
-config :openai_ex,
-  api_key: "dummy-key",  # LM Studio doesn't require a real key
-  base_url: "http://127.0.0.1:1234/v1"
-
 # Configure Nx backend for EXLA (AMD hardware)
 config :nx,
   default_backend: EXLA.Backend,
@@ -84,7 +79,7 @@ config :arcana,
   repo: LidlChef.Repo,
   embedder: {:local, model: "BAAI/bge-small-en-v1.5"},
   chunker: :default,
-  llm: "openai:qwen/qwen3-next-80b",
+  llm: &LidlChef.LLM.complete/1,
   graph: [
     enabled: false,  # Disable GraphRAG for now
     community_levels: 5,

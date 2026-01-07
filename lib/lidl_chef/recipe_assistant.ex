@@ -6,7 +6,7 @@ defmodule LidlChef.RecipeAssistant do
   available ingredients, dietary preferences, and cooking constraints.
   """
 
-  alias LidlChef.{LLM, Recipes, Repo}
+  alias LidlChef.{Recipes, Repo}
   alias Arcana.Agent
   require Logger
 
@@ -24,6 +24,26 @@ defmodule LidlChef.RecipeAssistant do
 
   Format your responses clearly with recipe names, ingredients needed, and any
   important notes about preparation.
+  """
+
+  @agentic_system_prompt """
+  You are a Lidl Chef assistant. Your goal is to help users discover delicious recipes
+  from the Lidl recipe collection based on their available ingredients and preferences.
+
+  Use the CONTEXT provided (recipe documents) to suggest meals.
+
+  IMPORTANT: For each recipe you recommend, you MUST include:
+  - The exact recipe name as it appears in the context
+  - The complete URL to the recipe (from the context)
+
+  Format your recommendations like this:
+  "I recommend trying **[Recipe Name]** ([URL]). This dish..."
+
+  If the user's ingredients don't fully match a recipe, list the additional ingredients
+  they would need as a "Shopping List".
+
+  Always respond in the same language the user uses (Spanish for Spanish queries,
+  English for English queries).
   """
 
   @doc """
@@ -58,16 +78,23 @@ defmodule LidlChef.RecipeAssistant do
   defp simple_ask(question, opts) do
     limit = Keyword.get(opts, :limit, 5)
 
-    # First, search for relevant recipes
-    case Recipes.search(question, limit: limit) do
-      {:ok, results} ->
-        context = format_search_results(results)
-        prompt = build_prompt(question, context)
+    # Use Agent pipeline without expansion and self-correction for simpler/faster responses
+    try do
+      ctx =
+        Agent.new(question, repo: Repo)
+        |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: false)
+        |> Agent.answer(
+          repo: Repo,
+          prompt: &build_simple_prompt/2,
+          self_correct: false
+        )
 
-        LLM.complete_with_system(@system_prompt, prompt)
-
-      {:error, reason} ->
-        {:error, {:search_failed, reason}}
+      case ctx.answer do
+        nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
+        answer -> {:ok, answer}
+      end
+    rescue
+      e -> {:error, {:agent_error, Exception.message(e)}}
     end
   end
 
@@ -75,22 +102,22 @@ defmodule LidlChef.RecipeAssistant do
     limit = Keyword.get(opts, :limit, 5)
     self_correct = Keyword.get(opts, :self_correct, true)
 
-    llm_fn = fn prompt ->
-      case LLM.complete_with_system(@system_prompt, prompt) do
-        {:ok, response} -> {:ok, response}
-        {:error, reason} -> {:error, reason}
-      end
-    end
-
     try do
       ctx =
-        Agent.new(question, repo: Repo, llm: llm_fn)
+        Agent.new(question, repo: Repo)
         |> Agent.expand()
-        |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: true)
+        |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: false)
         |> Agent.rerank(threshold: 5)
-        |> Agent.answer(self_correct: self_correct)
+        |> Agent.answer(
+          repo: Repo,
+          prompt: &build_agentic_prompt/2,
+          self_correct: self_correct
+        )
 
-      {:ok, ctx.answer}
+      case ctx.answer do
+        nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
+        answer -> {:ok, answer}
+      end
     rescue
       e -> {:error, {:agent_error, Exception.message(e)}}
     end
@@ -192,57 +219,33 @@ defmodule LidlChef.RecipeAssistant do
 
   # Helper functions
 
-  defp format_search_results(results) do
-    results
-    |> Enum.map(fn result ->
-      metadata = result.metadata || %{}
+  defp build_simple_prompt(question, chunks) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
 
-      """
-      Recipe: #{metadata["title"] || "Unknown"}
-      Servings: #{metadata["servings"] || "N/A"}
-      Ingredients: #{metadata["ingredients_list"] || "See full recipe"}
-      Categories: #{metadata["tags"] || "N/A"}
-      Nutrition: #{format_nutrition(metadata)}
-      URL: #{metadata["url"] || "N/A"}
-      ---
-      """
-    end)
-    |> Enum.join("\n")
-  end
-
-  defp format_nutrition(metadata) do
-    parts = [
-      if(metadata["calories"] && metadata["calories"] != "N/A",
-        do: "#{metadata["calories"]}"
-      ),
-      if(metadata["proteins"] && metadata["proteins"] != "N/A",
-        do: "Protein: #{metadata["proteins"]}"
-      ),
-      if(metadata["carbohydrates"] && metadata["carbohydrates"] != "N/A",
-        do: "Carbs: #{metadata["carbohydrates"]}"
-      ),
-      if(metadata["fats"] && metadata["fats"] != "N/A", do: "Fat: #{metadata["fats"]}")
-    ]
-
-    parts
-    |> Enum.filter(&(&1 != nil))
-    |> Enum.join(", ")
-    |> case do
-      "" -> "N/A"
-      nutrition -> nutrition
-    end
-  end
-
-  defp build_prompt(question, context) do
     """
-    Based on the following recipe information from our database:
+    #{@system_prompt}
 
-    #{context}
+    Reference material:
+    #{reference_material}
 
-    User's question: #{question}
+    Question: "#{question}"
 
-    Please provide a helpful response based on the recipes above. If the user is asking
-    for recipe recommendations, suggest the most relevant options from the context provided.
+    Answer the question directly and naturally. Use the reference material to inform your answer.
+    """
+  end
+
+  defp build_agentic_prompt(question, chunks) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+
+    """
+    #{@agentic_system_prompt}
+
+    CONTEXT (Recipe Documents):
+    #{reference_material}
+
+    USER QUESTION: "#{question}"
+
+    Provide a helpful response using the recipes from the context. Remember to include recipe names and URLs in your recommendations.
     """
   end
 end

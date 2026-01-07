@@ -48,10 +48,10 @@ defmodule Mix.Tasks.TestRecipes do
       e -> IO.puts("❌ Direct search failed: #{inspect(e)}")
     end
 
-    # Test LLM connectivity
+    # Test LLM connectivity through RecipeAssistant
     IO.puts("\n🤖 Testing LLM connectivity...")
     try do
-      response = LidlChef.LLM.complete("What is a simple pasta recipe?", max_tokens: 100)
+      {:ok, response} = LidlChef.RecipeAssistant.ask("What is a simple pasta recipe?")
       if String.length(response) > 0 do
         IO.puts("✅ LLM is working: #{String.slice(response, 0, 100)}...")
       else
