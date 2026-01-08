@@ -100,7 +100,6 @@ defmodule LidlChef.RecipeAssistant do
   """
   @spec ask(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def ask(question, opts \\ []) do
-    # Classify intent first
     {:ok, intent_info} = IntentClassifier.classify(question)
 
     Logger.debug(
@@ -110,14 +109,11 @@ defmodule LidlChef.RecipeAssistant do
     Logger.debug("  Ingredients: #{inspect(intent_info.ingredients)}")
     Logger.debug("  Dietary: #{inspect(intent_info.dietary)}")
 
-    # Configure options based on intent
     opts = configure_opts_for_intent(intent_info, opts)
 
-    # Execute the appropriate pipeline
     agentic_ask(question, intent_info, opts)
   end
 
-  # Configure options based on classified intent
   defp configure_opts_for_intent(intent_info, opts) do
     opts =
       case intent_info.intent do
@@ -154,7 +150,6 @@ defmodule LidlChef.RecipeAssistant do
           |> Keyword.put_new(:skip_rerank, false)
           |> Keyword.put_new(:self_correct, true)
 
-        # :general_search
         _ ->
           opts
           |> Keyword.put_new(:limit, 5)
@@ -183,7 +178,6 @@ defmodule LidlChef.RecipeAssistant do
     try do
       ctx =
         cond do
-          # Multi-search for meal planning
           use_multi_search ->
             ctx = Agent.new(question, repo: Repo, limit: 50)
             ctx = %{ctx | question: question}
@@ -198,12 +192,10 @@ defmodule LidlChef.RecipeAssistant do
             # Replace question with optimized search query but keep original for prompt
             search_with_query(ctx, search_query, question, limit)
 
-          # Skip rewrite for certain intents to preserve query meaning
           skip_rewrite ->
             Agent.new(question, repo: Repo, limit: limit)
             |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
 
-          # Full agentic pipeline for complex queries
           true ->
             Agent.new(question, repo: Repo, limit: limit)
             |> Agent.rewrite()
@@ -220,12 +212,10 @@ defmodule LidlChef.RecipeAssistant do
           Agent.rerank(ctx, reranker: LidlChef.Reranker, threshold: 2)
         end
 
-      # Debug: Check how many chunks we have before answer phase
       if Logger.level() == :debug do
         case ctx.results do
           [%{chunks: chunks} | _] ->
             Logger.debug("Before answer phase: #{length(chunks)} chunks in ctx.results")
-            # Log unique document IDs to verify variety
             unique_docs = chunks |> Enum.map(& &1.document_id) |> Enum.uniq() |> length()
             Logger.debug("  → #{unique_docs} unique document_ids")
 
@@ -234,7 +224,6 @@ defmodule LidlChef.RecipeAssistant do
         end
       end
 
-      # Build prompt based on intent
       prompt_fn = build_prompt_for_intent(intent_info)
 
       ctx =
@@ -244,7 +233,6 @@ defmodule LidlChef.RecipeAssistant do
           self_correct: self_correct
         )
 
-      # Debug: Check after answer
       if Logger.level() == :debug do
         if ctx.answer do
           Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
@@ -267,10 +255,7 @@ defmodule LidlChef.RecipeAssistant do
     ingredients = intent_info.ingredients
     dietary = intent_info.dietary
     meal_type = intent_info.meal_type
-
-    # Build a search query optimized for finding recipes with these ingredients
     base_query = Enum.join(ingredients, " ")
-
     # Add dietary filter if present
     base_query = if dietary, do: "#{base_query} #{dietary}", else: base_query
 
@@ -286,11 +271,9 @@ defmodule LidlChef.RecipeAssistant do
 
   # Search with an optimized query but keep original question for context
   defp search_with_query(ctx, search_query, original_question, limit) do
-    # Perform hybrid search with the optimized query
     case Recipes.search(search_query, limit: limit, graph: false, mode: :hybrid) do
       {:ok, [_ | _] = chunks} ->
         Logger.debug("Ingredient search found #{length(chunks)} chunks")
-        # Update context with results, keeping original question
         %{
           ctx
           | question: original_question,
@@ -305,7 +288,6 @@ defmodule LidlChef.RecipeAssistant do
         }
 
       _ ->
-        # Fallback to standard search if hybrid doesn't find results
         Logger.debug("Ingredient search found no results, trying standard search")
 
         ctx
@@ -333,17 +315,11 @@ defmodule LidlChef.RecipeAssistant do
   # Multi-search strategy for menu queries to gather diverse recipes
   defp multi_search_for_menus(ctx, question, target_limit) do
     lower_question = String.downcase(question)
-
-    # Extract dietary restrictions from the question
     dietary_filter = extract_dietary_filter(lower_question)
-
-    # Define search queries for different meal types and variety
     search_queries = build_menu_search_queries(lower_question, dietary_filter)
 
     Logger.debug("Multi-search: Running #{length(search_queries)} queries...")
 
-    # Perform multiple searches and collect unique chunks
-    # Adjust limit per query based on target - fewer chunks per query to encourage diversity
     limit_per_query = max(div(target_limit, length(search_queries)), 5)
 
     Logger.debug(
@@ -388,7 +364,6 @@ defmodule LidlChef.RecipeAssistant do
         ]
     }
 
-    # Debug: Verify chunks are in results
     if Logger.level() == :debug do
       result_chunks =
         case updated_ctx.results do
@@ -443,7 +418,6 @@ defmodule LidlChef.RecipeAssistant do
       "pescado marisco"
     ]
 
-    # Add dietary filter to each query if present
     queries =
       if dietary_filter do
         Enum.map(base_queries, fn q -> "#{q} #{dietary_filter}" end)
@@ -451,7 +425,6 @@ defmodule LidlChef.RecipeAssistant do
         base_queries
       end
 
-    # Also add the original question context
     original_terms =
       question
       |> String.replace(~r/[^\w\s]/, "")
@@ -460,7 +433,6 @@ defmodule LidlChef.RecipeAssistant do
       |> Enum.take(5)
       |> Enum.join(" ")
 
-    # Combine all query categories
     all_queries = queries ++ time_queries ++ ingredient_queries
 
     if original_terms != "" do
@@ -471,8 +443,19 @@ defmodule LidlChef.RecipeAssistant do
   end
 
   defp search_single(query, limit) do
-    case Recipes.search(query, limit: limit, graph: false, mode: :hybrid) do
+    cache_key = {:recipe_search, query, limit}
+    ttl = :timer.hours(2)
+
+    case Cachex.fetch(:recipe_search_cache, cache_key,
+           fn _key ->
+             case Recipes.search(query, limit: limit, graph: false, mode: :hybrid) do
+               {:ok, chunks} -> {:commit, chunks, ttl: ttl}
+               _ -> {:ignore, []}
+             end
+           end
+         ) do
       {:ok, chunks} -> chunks
+      {:commit, chunks} -> chunks
       _ -> []
     end
   end
@@ -480,7 +463,6 @@ defmodule LidlChef.RecipeAssistant do
   defp deduplicate_chunks(chunks) do
     chunks
     |> Enum.uniq_by(fn chunk ->
-      # Deduplicate by document_id or by extracting title from text
       chunk.document_id || extract_title_from_chunk(chunk.text)
     end)
   end
@@ -488,7 +470,6 @@ defmodule LidlChef.RecipeAssistant do
   defp extract_title_from_chunk(text) do
     case Regex.run(~r/Recipe:\s*(.+?)(?:\n|$)/i, text) do
       [_, title] -> String.trim(title)
-      # Fallback to full text if no title found
       _ -> text
     end
   end
@@ -718,16 +699,13 @@ defmodule LidlChef.RecipeAssistant do
   defp build_agentic_prompt(question, chunks) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
 
-    # Debug: Log prompt size and chunk count
     if Logger.level() == :debug do
       Logger.debug(
         "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
       )
 
-      # Count total recipes in reference material
       recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
       Logger.debug("  → Recipe entries found in context: #{recipe_count}")
-      # Log first few URLs found in the reference material
       urls =
         Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
         |> Enum.map(&hd/1)
@@ -737,7 +715,6 @@ defmodule LidlChef.RecipeAssistant do
       Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
     end
 
-    # Check if this is a menu planning request
     is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
 
     menu_instructions =

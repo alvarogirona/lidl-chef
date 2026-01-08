@@ -12,13 +12,10 @@ defmodule LidlChef.Application do
       LidlChef.Repo,
       {DNSCluster, query: Application.get_env(:lidl_chef, :dns_cluster_query) || :ignore},
       {Phoenix.PubSub, name: LidlChef.PubSub},
-      # Arcana task supervisor for async operations
+      {Cachex, name: :recipe_search_cache},
       Arcana.TaskSupervisor,
-      # Local embedding model serving (BAAI/bge-large-en-v1.5)
       Arcana.Embedder.Local,
-      # NER serving for GraphRAG entity extraction
       Arcana.Graph.NERServing,
-      # Start to serve requests, typically the last entry
       LidlChefWeb.Endpoint
     ]
 
