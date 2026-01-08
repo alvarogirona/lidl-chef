@@ -3,95 +3,137 @@ defmodule LidlChef.Reranker do
   Custom reranker using the smaller qwen3-reranker-0.6b model.
 
   This reranker uses a lightweight model specifically optimized for reranking tasks,
-  with a custom prompt designed for recipe ranking that understands recipes just need
-  to include some of the mentioned ingredients to be relevant.
+  with a custom prompt designed for recipe ranking based on ingredients and user preferences.
   """
 
   @behaviour Arcana.Agent.Reranker
   require Logger
 
-  @default_threshold 3
+  @model "qwen3-reranker-0.6b"
+  @base_url "http://127.0.0.1:1234"
+  @default_threshold 5
+  @default_timeout 60_000
 
   @recipe_prompt_template """
-  Question: Does this recipe answer "Que puedo cocinar con {question_keyword}"?
+  You are a recipe relevance scorer. Rate how well the recipe matches the user's request.
 
-  Recipe title and ingredients:
+  User request: {question}
+
+  Recipe:
   {chunk_text}
 
-  Score 0-10 (7-10=yes it has the ingredient, 0-6=no or unrelated):
+  Scoring criteria (0-10):
+  - 10: Recipe uses the exact ingredients mentioned and fits the request perfectly
+  - 7-9: Recipe uses most of the mentioned ingredients or closely matches preferences
+  - 4-6: Recipe uses some mentioned ingredients or partially matches the request
+  - 1-3: Recipe has minimal relevance to the request
+  - 0: Recipe is completely unrelated
+
+  IMPORTANT: A recipe does NOT need to use ALL mentioned ingredients. If it uses SOME of them well, it deserves a good score.
+
+  Return only a single number from 0 to 10.
   """
 
   @impl Arcana.Agent.Reranker
   def rerank(_question, [], _opts), do: {:ok, []}
 
   def rerank(question, chunks, opts) do
-    # Use the smaller reranker model via a custom LLM function
-    # that maps qwen3-reranker-0.6b response to Arcana's expected format
-    reranker_llm = fn prompt ->
-      Logger.debug("[Reranker] Sending prompt to qwen3-reranker-0.6b")
-      Logger.debug("[Reranker] Prompt (first 300 chars): #{String.slice(prompt, 0, 300)}")
-
-      case LidlChef.LLM.complete(prompt,
-             model: "qwen3-reranker-0.6b",
-             temperature: 0.1,
-             max_tokens: 50
-           ) do
-        {:ok, response} ->
-          Logger.debug("[Reranker] Response from model: #{inspect(response)}")
-
-          # qwen3-reranker returns just the score (e.g., "0", "10")
-          # Map it to Arcana's expected JSON format
-          score =
-            case Integer.parse(String.trim(response)) do
-              {num, _} ->
-                Logger.debug("[Reranker] Parsed score: #{num}")
-                num
-              _ ->
-                Logger.debug("[Reranker] Failed to parse response as integer, defaulting to 0")
-                0
-            end
-
-          # Return JSON format Arcana expects
-          json_response = "{\"score\": #{score}, \"reasoning\": \"Recipe relevance score: #{score}\"}"
-          Logger.debug("[Reranker] Returning: #{json_response}")
-          {:ok, json_response}
-
-        {:error, err} ->
-          Logger.error("[Reranker] LLM error: #{inspect(err)}")
-          err
-      end
-    end
-
-    # Custom prompt function for recipe ranking
-    prompt_fn = fn question, chunk_text ->
-      # Extract main keyword from question (first noun-like word)
-      keyword = question |> String.split() |> Enum.find("receta", &(String.length(&1) > 2))
-
-      prompt = @recipe_prompt_template
-      |> String.replace("{question}", question)
-      |> String.replace("{question_keyword}", keyword)
-      Logger.debug("[Reranker] Full prompt for chunk:\n#{prompt}")
-      prompt
-    end
-
-    # Configure threshold
     threshold = Keyword.get(opts, :threshold, @default_threshold)
-    Logger.debug("[Reranker] Starting rerank with threshold: #{threshold}, chunks: #{length(chunks)}")
 
-    # Use Arcana's LLM reranker with our custom LLM function and prompt
-    result = Arcana.Agent.Reranker.LLM.rerank(question, chunks,
-      llm: reranker_llm,
-      threshold: threshold,
-      prompt: prompt_fn
-    )
+    Logger.info("[Reranker] Received #{length(chunks)} chunks to rerank")
 
-    case result do
-      {:ok, reranked} ->
-        Logger.debug("[Reranker] Rerank complete: #{length(reranked)} of #{length(chunks)} chunks passed threshold")
-        {:ok, reranked}
-      err ->
-        Logger.error("[Reranker] Rerank error: #{inspect(err)}")
-        err
+    scored_chunks =
+      chunks
+      |> Enum.map(fn chunk ->
+        prompt = build_prompt(question, chunk.text)
+        Logger.info("[Reranker] Generated prompt:\n#{prompt}")
+
+        score = get_score(prompt)
+        {chunk, score}
+      end)
+      |> Enum.filter(fn {_chunk, score} -> score >= threshold end)
+      |> Enum.sort_by(fn {_chunk, score} -> score end, :desc)
+      |> Enum.map(fn {chunk, _score} -> chunk end)
+
+    {:ok, scored_chunks}
+  end
+
+  defp build_prompt(question, chunk_text) do
+    @recipe_prompt_template
+    |> String.replace("{question}", question)
+    |> String.replace("{chunk_text}", chunk_text)
+  end
+
+  defp get_score(prompt) do
+    body = %{
+      model: @model,
+      messages: [
+        %{role: "user", content: prompt}
+      ],
+      temperature: 0.1,
+      max_tokens: 50
+    }
+
+    case Req.post("#{@base_url}/v1/chat/completions",
+           json: body,
+           receive_timeout: @default_timeout,
+           pool_timeout: @default_timeout,
+           connect_options: [timeout: @default_timeout]
+         ) do
+      {:ok, %Req.Response{status: 200, body: response_body}} ->
+        Logger.info("[Reranker] LLM response: #{inspect(response_body)}")
+        parse_reranker_response(response_body)
+
+      {:ok, %Req.Response{status: status, body: error_body}} ->
+        Logger.error("[Reranker] HTTP error #{status}: #{inspect(error_body)}")
+        0
+
+      {:error, reason} ->
+        Logger.error("[Reranker] Request error: #{inspect(reason)}")
+        0
+    end
+  end
+
+  defp parse_reranker_response(response_body) do
+    # qwen3-reranker outputs score in "content" field and reasoning in "reasoning_content"
+    choice =
+      response_body
+      |> Map.get("choices", [])
+      |> List.first()
+      |> Map.get("message", %{})
+
+    content = Map.get(choice, "content", "")
+    reasoning_content = Map.get(choice, "reasoning_content", "")
+
+    Logger.info("[Reranker] Content: #{content}, Reasoning: #{reasoning_content}")
+
+    # Parse the score from content - it should be a number 0-10
+    case parse_score_from_content(content) do
+      {:ok, score} -> score
+      :error -> 0
+    end
+  end
+
+  defp parse_score_from_content(content) when is_binary(content) do
+    content
+    |> String.trim()
+    |> extract_number()
+  end
+
+  defp parse_score_from_content(_), do: :error
+
+  defp extract_number(text) do
+    # Try to extract a number from the text (handles "7", "7/10", "Score: 7", etc.)
+    case Regex.run(~r/\b(\d+)\b/, text) do
+      [_, num_str] ->
+        case Integer.parse(num_str) do
+          {num, _} when num >= 0 and num <= 10 -> {:ok, num}
+          {num, _} when num > 10 -> {:ok, 10}
+          _ -> :error
+        end
+
+      nil ->
+        :error
     end
   end
 end
