@@ -10,22 +10,6 @@ defmodule LidlChef.RecipeAssistant do
   alias Arcana.Agent
   require Logger
 
-  @system_prompt """
-  You are a helpful cooking assistant for Lidl recipes. Your role is to help users find
-  recipes based on the ingredients they have available.
-
-  When recommending recipes:
-  1. Focus on recipes that use the ingredients the user mentioned
-  2. Suggest alternatives if exact matches aren't found
-  3. Provide helpful cooking tips when relevant
-  4. Be friendly and encouraging
-  5. If nutritional information is available, mention it when relevant
-  6. Always respond in the same language the user uses
-
-  Format your responses clearly with recipe names, ingredients needed, and any
-  important notes about preparation.
-  """
-
   @agentic_system_prompt """
   Eres un asistente de Lidl Chef. Tu objetivo es ayudar a los usuarios a descubrir recetas deliciosas
   de la colección de recetas de Lidl basadas en sus ingredientes disponibles y preferencias.
@@ -81,9 +65,19 @@ defmodule LidlChef.RecipeAssistant do
   10. Always respond in the same language the user uses (Spanish for Spanish queries,
      English for English queries).
 
-  9. Be friendly, encouraging, and provide helpful cooking tips when relevant.
-
   11. VERIFICATION: Before recommending any recipe, verify it exists in the CONTEXT with its URL.
+
+  12. Be friendly, encouraging, and provide helpful cooking tips when relevant.
+
+  13. INFORMACIÓN NUTRICIONAL: Cuando esté disponible en el contexto, menciona:
+    - Calorías aproximadas por ración
+    - Si es alta en proteínas/fibra/etc.
+    - Si es adecuada para dietas específicas
+
+  14. SUGERENCIAS PROACTIVAS: Además de responder, sugiere:
+    - Recetas relacionadas que al usuario podrían gustarle
+    - Formas de aprovechar sobras
+    - Variaciones de la receta (más picante, más ligera, etc.)
   """
 
   @doc """
@@ -106,41 +100,38 @@ defmodule LidlChef.RecipeAssistant do
   """
   @spec ask(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def ask(question, opts \\ []) do
-    use_simple = Keyword.get(opts, :simple, false)
-
     # Auto-detect menu queries and increase limit if not explicitly set
     opts = adjust_limit_for_query(question, opts)
 
-    # if use_simple do
-    #  simple_ask(question, opts)
-    # else
-      agentic_ask(question, opts)
-    # end
+    agentic_ask(question, opts)
   end
 
   # Detect menu queries and adjust limit accordingly
   defp adjust_limit_for_query(question, opts) do
     lower_question = String.downcase(question)
-    is_menu_query = String.contains?(lower_question, ["menú", "menu", "semanal", "semana", "diario", "día"])
+
+    is_menu_query =
+      String.contains?(lower_question, ["menú", "menu", "semanal", "semana", "diario", "día"])
 
     # Adjust limit if not explicitly set
-    opts = if Keyword.has_key?(opts, :limit) do
-      opts
-    else
-      cond do
-        # Weekly menu queries need more recipes (7 days * 3 meals = 21)
-        String.contains?(lower_question, ["semanal", "semana"]) ->
-          Keyword.put(opts, :limit, 30)
+    opts =
+      if Keyword.has_key?(opts, :limit) do
+        opts
+      else
+        cond do
+          # Weekly menu queries need more recipes (7 days * 3 meals = 21)
+          String.contains?(lower_question, ["semanal", "semana"]) ->
+            Keyword.put(opts, :limit, 30)
 
-        # Daily menu queries need recipes for 3 meals
-        String.contains?(lower_question, ["diario", "día", "desayuno", "comida", "cena"]) ->
-          Keyword.put(opts, :limit, 15)
+          # Daily menu queries need recipes for 3 meals
+          String.contains?(lower_question, ["diario", "día", "desayuno", "comida", "cena"]) ->
+            Keyword.put(opts, :limit, 15)
 
-        # Default
-        true ->
-          Keyword.put(opts, :limit, 5)
+          # Default
+          true ->
+            Keyword.put(opts, :limit, 5)
+        end
       end
-    end
 
     # For menu queries: enable multi-search, disable reranking and self-correction
     if is_menu_query do
@@ -153,29 +144,6 @@ defmodule LidlChef.RecipeAssistant do
     end
   end
 
-  defp simple_ask(question, opts) do
-    limit = Keyword.get(opts, :limit, 5)
-
-    # Use Agent pipeline without expansion and self-correction for simpler/faster responses
-    try do
-      ctx =
-        Agent.new(question, repo: Repo)
-        |> Agent.search(collection: Recipes.collection_name(), limit: limit, graph: false)
-        |> Agent.answer(
-          repo: Repo,
-          prompt: &build_simple_prompt/2,
-          self_correct: false
-        )
-
-      case ctx.answer do
-        nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
-        answer -> {:ok, answer}
-      end
-    rescue
-      e -> {:error, {:agent_error, Exception.message(e)}}
-    end
-  end
-
   defp agentic_ask(question, opts) do
     limit = Keyword.get(opts, :limit, 5)
     self_correct = Keyword.get(opts, :self_correct, true)
@@ -183,31 +151,36 @@ defmodule LidlChef.RecipeAssistant do
     use_multi_search = Keyword.get(opts, :multi_search, false)
 
     try do
-      ctx = Agent.new(question, repo: Repo)
+      ctx =
+        Agent.new(question, repo: Repo, limit: limit)
+        |> Agent.rewrite()
         |> Agent.expand()
 
       # For menu queries, use multi-search to gather more diverse recipes
-      ctx = if use_multi_search do
-        multi_search_for_menus(ctx, question, limit)
-      else
-        Agent.search(ctx, collection: Recipes.collection_name(), limit: limit, graph: false)
-      end
+      ctx =
+        if use_multi_search do
+          multi_search_for_menus(ctx, question, limit)
+        else
+          # TODO: is the limit and graph parameters used here? I was checking the source code and it does not
+          # seem to be used
+          Agent.search(ctx, collection: Recipes.collection_name(), graph: false)
+        end
 
       # Skip reranking for menu queries - it processes each chunk individually with LLM
       # which filters out recipes before the LLM can see them all together
-      ctx = if skip_rerank do
-        ctx
-      else
-        # Lower threshold (3 instead of 5) to accept partial ingredient matches
-        # A recipe that uses SOME of the user's ingredients is still valuable
-        Agent.rerank(ctx, threshold: 3)
-      end
+      ctx =
+        if skip_rerank do
+          ctx
+        else
+          Agent.rerank(ctx, threshold: 3)
+        end
 
-      ctx = Agent.answer(ctx,
-        repo: Repo,
-        prompt: &build_agentic_prompt/2,
-        self_correct: self_correct
-      )
+      ctx =
+        Agent.answer(ctx,
+          repo: Repo,
+          prompt: &build_agentic_prompt/2,
+          self_correct: self_correct
+        )
 
       case ctx.answer do
         nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
@@ -237,18 +210,22 @@ defmodule LidlChef.RecipeAssistant do
         search_single(query, limit_per_query)
       end)
       |> deduplicate_chunks()
-      |> Enum.take(target_limit * 2)  # Take more than needed to ensure variety
+      # Take more than needed to ensure variety
+      |> Enum.take(target_limit * 2)
 
     Logger.debug("Multi-search collected #{length(all_chunks)} unique chunks for menu query")
 
     # Update context with combined results - matching the exact structure Arcana expects
-    %{ctx |
-      results: [%{
-        question: ctx.question,
-        collection: Recipes.collection_name(),
-        chunks: all_chunks,
-        iterations: 1
-      }]
+    %{
+      ctx
+      | results: [
+          %{
+            question: ctx.question,
+            collection: Recipes.collection_name(),
+            chunks: all_chunks,
+            iterations: 1
+          }
+        ]
     }
   end
 
@@ -280,21 +257,45 @@ defmodule LidlChef.RecipeAssistant do
       "snack merienda tentempié"
     ]
 
+    time_queries = [
+      "rápido fácil 30 minutos",
+      "lento guiso cocción"
+    ]
+
+    ingredient_queries = [
+      "verduras vegetales",
+      "legumbres garbanzos lentejas",
+      "pasta arroz cereales",
+      "carne pollo ternera cerdo",
+      "pescado marisco"
+    ]
+
+    ingredient_queries = [
+      "verduras vegetales",
+      "legumbres garbanzos lentejas",
+      "pasta arroz cereales",
+      "carne pollo ternera cerdo",
+      "pescado marisco"
+    ]
+
     # Add dietary filter to each query if present
-    queries = if dietary_filter do
-      Enum.map(base_queries, fn q -> "#{q} #{dietary_filter}" end)
-    else
-      base_queries
-    end
+    queries =
+      if dietary_filter do
+        Enum.map(base_queries, fn q -> "#{q} #{dietary_filter}" end)
+      else
+        base_queries
+      end
 
     # Also add the original question context
-    original_terms = question
+    original_terms =
+      question
       |> String.replace(~r/[^\w\s]/, "")
       |> String.split()
       |> Enum.reject(&(String.length(&1) < 3))
       |> Enum.take(5)
       |> Enum.join(" ")
 
+    # TODO: add ingredient_queries, time_queries and method_queries
     if original_terms != "" do
       [original_terms | queries]
     else
@@ -320,7 +321,8 @@ defmodule LidlChef.RecipeAssistant do
   defp extract_title_from_chunk(text) do
     case Regex.run(~r/Recipe:\s*(.+?)(?:\n|$)/i, text) do
       [_, title] -> String.trim(title)
-      _ -> text  # Fallback to full text if no title found
+      # Fallback to full text if no title found
+      _ -> text
     end
   end
 
@@ -419,21 +421,6 @@ defmodule LidlChef.RecipeAssistant do
   end
 
   # Helper functions
-
-  defp build_simple_prompt(question, chunks) do
-    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
-
-    """
-    #{@system_prompt}
-
-    Reference material:
-    #{reference_material}
-
-    Question: "#{question}"
-
-    Answer the question directly and naturally. Use the reference material to inform your answer.
-    """
-  end
 
   defp build_agentic_prompt(question, chunks) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
