@@ -6,7 +6,7 @@ defmodule LidlChef.RecipeAssistant do
   available ingredients, dietary preferences, and cooking constraints.
   """
 
-  alias LidlChef.{Recipes, Repo}
+  alias LidlChef.{IntentClassifier, Recipes, Repo}
   alias Arcana.Agent
   require Logger
 
@@ -100,74 +100,115 @@ defmodule LidlChef.RecipeAssistant do
   """
   @spec ask(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def ask(question, opts \\ []) do
-    # Auto-detect menu queries and increase limit if not explicitly set
-    opts = adjust_limit_for_query(question, opts)
+    # Classify intent first
+    {:ok, intent_info} = IntentClassifier.classify(question)
 
-    agentic_ask(question, opts)
+    Logger.debug(
+      "Intent classified: #{intent_info.intent} (confidence: #{intent_info.confidence})"
+    )
+
+    Logger.debug("  Ingredients: #{inspect(intent_info.ingredients)}")
+    Logger.debug("  Dietary: #{inspect(intent_info.dietary)}")
+
+    # Configure options based on intent
+    opts = configure_opts_for_intent(intent_info, opts)
+
+    # Execute the appropriate pipeline
+    agentic_ask(question, intent_info, opts)
   end
 
-  # Detect menu queries and adjust limit accordingly
-  defp adjust_limit_for_query(question, opts) do
-    lower_question = String.downcase(question)
-
-    is_menu_query =
-      String.contains?(lower_question, ["menú", "menu", "semanal", "semana", "diario", "día"])
-
-    # Adjust limit if not explicitly set
+  # Configure options based on classified intent
+  defp configure_opts_for_intent(intent_info, opts) do
     opts =
-      if Keyword.has_key?(opts, :limit) do
-        opts
-      else
-        cond do
-          # Weekly menu queries need more recipes (7 days * 3 meals = 21)
-          # Set higher limit to account for duplicates and ensure variety
-          String.contains?(lower_question, ["semanal", "semana"]) ->
-            Keyword.put(opts, :limit, 50)
+      case intent_info.intent do
+        :meal_planning ->
+          days = intent_info.days || 1
+          limit = if days >= 7, do: 50, else: 15
 
-          # Daily menu queries need recipes for 3 meals
-          String.contains?(lower_question, ["diario", "día", "desayuno", "comida", "cena"]) ->
-            Keyword.put(opts, :limit, 15)
+          opts
+          |> Keyword.put_new(:limit, limit)
+          |> Keyword.put_new(:multi_search, true)
+          |> Keyword.put_new(:skip_rerank, true)
+          |> Keyword.put_new(:self_correct, false)
 
-          # Default
-          true ->
-            Keyword.put(opts, :limit, 5)
-        end
+        :ingredient_search ->
+          # For ingredient searches, use hybrid search directly without rewrite/expand
+          # which can mangle the ingredient list
+          opts
+          |> Keyword.put_new(:limit, 10)
+          |> Keyword.put_new(:skip_rewrite, true)
+          |> Keyword.put_new(:skip_rerank, false)
+          |> Keyword.put_new(:self_correct, true)
+
+        :dietary_filter ->
+          opts
+          |> Keyword.put_new(:limit, 10)
+          |> Keyword.put_new(:skip_rewrite, true)
+          |> Keyword.put_new(:skip_rerank, false)
+          |> Keyword.put_new(:self_correct, true)
+
+        :recipe_question ->
+          opts
+          |> Keyword.put_new(:limit, 5)
+          |> Keyword.put_new(:skip_rewrite, false)
+          |> Keyword.put_new(:skip_rerank, false)
+          |> Keyword.put_new(:self_correct, true)
+
+        # :general_search
+        _ ->
+          opts
+          |> Keyword.put_new(:limit, 5)
+          |> Keyword.put_new(:skip_rewrite, false)
+          |> Keyword.put_new(:skip_rerank, false)
+          |> Keyword.put_new(:self_correct, true)
       end
 
-    # For menu queries: enable multi-search, disable reranking and self-correction
-    if is_menu_query do
-      opts
-      |> Keyword.put_new(:multi_search, true)
-      |> Keyword.put_new(:skip_rerank, true)
-      |> Keyword.put_new(:self_correct, false)
-    else
-      opts
-    end
+    # Store intent info in opts for later use in prompt building
+    Keyword.put(opts, :intent_info, intent_info)
   end
 
-  defp agentic_ask(question, opts) do
+  defp agentic_ask(question, intent_info, opts) do
     limit = Keyword.get(opts, :limit, 5)
     self_correct = Keyword.get(opts, :self_correct, true)
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
     use_multi_search = Keyword.get(opts, :multi_search, false)
 
-    Logger.debug("agentic_ask called with: limit=#{limit}, self_correct=#{self_correct}, skip_rerank=#{skip_rerank}, multi_search=#{use_multi_search}")
+    Logger.debug(
+      "agentic_ask: limit=#{limit}, skip_rewrite=#{skip_rewrite}, skip_rerank=#{skip_rerank}, multi_search=#{use_multi_search}"
+    )
+
     Logger.debug("Original question: #{question}")
 
     try do
-      # For menu queries with multi-search, skip rewrite/expand and do multi-search directly
-      # because rewrite/expand can mangle multi-day menu requests
       ctx =
-        if use_multi_search do
-          ctx = Agent.new(question, repo: Repo, limit: 50)
-          # Store the original question before any transformations
-          ctx = %{ctx | question: question}
-          multi_search_for_menus(ctx, question, 50)
-        else
-          Agent.new(question, repo: Repo, limit: limit)
-          |> Agent.rewrite()
-          |> Agent.expand()
-          |> Agent.search(collection: Recipes.collection_name(), graph: false)
+        cond do
+          # Multi-search for meal planning
+          use_multi_search ->
+            ctx = Agent.new(question, repo: Repo, limit: 50)
+            ctx = %{ctx | question: question}
+            multi_search_for_menus(ctx, question, 50)
+
+          # Ingredient search: use ingredients directly for better search
+          intent_info.intent == :ingredient_search and length(intent_info.ingredients) > 0 ->
+            search_query = build_ingredient_search_query(intent_info)
+            Logger.debug("Built ingredient search query: #{search_query}")
+
+            ctx = Agent.new(question, repo: Repo, limit: limit)
+            # Replace question with optimized search query but keep original for prompt
+            search_with_query(ctx, search_query, question, limit)
+
+          # Skip rewrite for certain intents to preserve query meaning
+          skip_rewrite ->
+            Agent.new(question, repo: Repo, limit: limit)
+            |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+
+          # Full agentic pipeline for complex queries
+          true ->
+            Agent.new(question, repo: Repo, limit: limit)
+            |> Agent.rewrite()
+            |> Agent.expand()
+            |> Agent.search(collection: Recipes.collection_name(), graph: false)
         end
 
       # Skip reranking for menu queries - it processes each chunk individually with LLM
@@ -176,7 +217,7 @@ defmodule LidlChef.RecipeAssistant do
         if skip_rerank do
           ctx
         else
-          Agent.rerank(ctx, threshold: 3)
+          Agent.rerank(ctx, reranker: LidlChef.Reranker, threshold: 2)
         end
 
       # Debug: Check how many chunks we have before answer phase
@@ -187,15 +228,19 @@ defmodule LidlChef.RecipeAssistant do
             # Log unique document IDs to verify variety
             unique_docs = chunks |> Enum.map(& &1.document_id) |> Enum.uniq() |> length()
             Logger.debug("  → #{unique_docs} unique document_ids")
+
           _ ->
             Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
         end
       end
 
+      # Build prompt based on intent
+      prompt_fn = build_prompt_for_intent(intent_info)
+
       ctx =
         Agent.answer(ctx,
           repo: Repo,
-          prompt: &build_agentic_prompt/2,
+          prompt: prompt_fn,
           self_correct: self_correct
         )
 
@@ -217,6 +262,74 @@ defmodule LidlChef.RecipeAssistant do
     end
   end
 
+  # Build optimized search query from extracted ingredients
+  defp build_ingredient_search_query(intent_info) do
+    ingredients = intent_info.ingredients
+    dietary = intent_info.dietary
+    meal_type = intent_info.meal_type
+
+    # Build a search query optimized for finding recipes with these ingredients
+    base_query = Enum.join(ingredients, " ")
+
+    # Add dietary filter if present
+    base_query = if dietary, do: "#{base_query} #{dietary}", else: base_query
+
+    # Add meal type context if present
+    case meal_type do
+      :breakfast -> "#{base_query} desayuno"
+      :lunch -> "#{base_query} comida almuerzo"
+      :dinner -> "#{base_query} cena"
+      :snack -> "#{base_query} merienda snack"
+      _ -> base_query
+    end
+  end
+
+  # Search with an optimized query but keep original question for context
+  defp search_with_query(ctx, search_query, original_question, limit) do
+    # Perform hybrid search with the optimized query
+    case Recipes.search(search_query, limit: limit, graph: false, mode: :hybrid) do
+      {:ok, [_ | _] = chunks} ->
+        Logger.debug("Ingredient search found #{length(chunks)} chunks")
+        # Update context with results, keeping original question
+        %{
+          ctx
+          | question: original_question,
+            results: [
+              %{
+                question: original_question,
+                collection: Recipes.collection_name(),
+                chunks: chunks,
+                iterations: 1
+              }
+            ]
+        }
+
+      _ ->
+        # Fallback to standard search if hybrid doesn't find results
+        Logger.debug("Ingredient search found no results, trying standard search")
+
+        ctx
+        |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+    end
+  end
+
+  # Build prompt function based on intent
+  defp build_prompt_for_intent(intent_info) do
+    case intent_info.intent do
+      :ingredient_search ->
+        fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end
+
+      :meal_planning ->
+        fn question, chunks -> build_meal_planning_prompt(question, chunks, intent_info) end
+
+      :dietary_filter ->
+        fn question, chunks -> build_dietary_prompt(question, chunks, intent_info) end
+
+      _ ->
+        &build_agentic_prompt/2
+    end
+  end
+
   # Multi-search strategy for menu queries to gather diverse recipes
   defp multi_search_for_menus(ctx, question, target_limit) do
     lower_question = String.downcase(question)
@@ -233,21 +346,29 @@ defmodule LidlChef.RecipeAssistant do
     # Adjust limit per query based on target - fewer chunks per query to encourage diversity
     limit_per_query = max(div(target_limit, length(search_queries)), 5)
 
-    Logger.debug("Fetching #{limit_per_query} chunks per query (#{length(search_queries)} queries total)")
+    Logger.debug(
+      "Fetching #{limit_per_query} chunks per query (#{length(search_queries)} queries total)"
+    )
 
     all_chunks =
       search_queries
       |> Enum.with_index(1)
       |> Enum.flat_map(fn {query, idx} ->
         chunks = search_single(query, limit_per_query)
-        Logger.debug("  #{idx}/#{length(search_queries)}: \"#{String.slice(query, 0, 35)}\" -> #{length(chunks)}")
+
+        Logger.debug(
+          "  #{idx}/#{length(search_queries)}: \"#{String.slice(query, 0, 35)}\" -> #{length(chunks)}"
+        )
+
         chunks
       end)
       |> deduplicate_chunks()
       # Take more than target to ensure variety after deduplication
       |> Enum.take(target_limit * 2)
 
-    Logger.debug("Multi-search: Total #{length(all_chunks)} unique chunks (target #{target_limit})")
+    Logger.debug(
+      "Multi-search: Total #{length(all_chunks)} unique chunks (target #{target_limit})"
+    )
 
     # Debug: Log a sample of chunk texts to verify they contain recipe data
     if Logger.level() == :debug and length(all_chunks) > 0 do
@@ -269,10 +390,12 @@ defmodule LidlChef.RecipeAssistant do
 
     # Debug: Verify chunks are in results
     if Logger.level() == :debug do
-      result_chunks = case updated_ctx.results do
-        [%{chunks: chunks} | _] -> length(chunks)
-        _ -> 0
-      end
+      result_chunks =
+        case updated_ctx.results do
+          [%{chunks: chunks} | _] -> length(chunks)
+          _ -> 0
+        end
+
       Logger.debug("After multi_search_for_menus: ctx.results has #{result_chunks} chunks")
     end
 
@@ -320,14 +443,6 @@ defmodule LidlChef.RecipeAssistant do
       "pescado marisco"
     ]
 
-    ingredient_queries = [
-      "verduras vegetales",
-      "legumbres garbanzos lentejas",
-      "pasta arroz cereales",
-      "carne pollo ternera cerdo",
-      "pescado marisco"
-    ]
-
     # Add dietary filter to each query if present
     queries =
       if dietary_filter do
@@ -345,11 +460,13 @@ defmodule LidlChef.RecipeAssistant do
       |> Enum.take(5)
       |> Enum.join(" ")
 
-    # TODO: add ingredient_queries, time_queries and method_queries
+    # Combine all query categories
+    all_queries = queries ++ time_queries ++ ingredient_queries
+
     if original_terms != "" do
-      [original_terms | queries]
+      [original_terms | all_queries]
     else
-      queries
+      all_queries
     end
   end
 
@@ -472,19 +589,150 @@ defmodule LidlChef.RecipeAssistant do
 
   # Helper functions
 
+  # Prompt optimized for ingredient-based searches
+  defp build_ingredient_prompt(question, chunks, intent_info) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    ingredients = Enum.join(intent_info.ingredients, ", ")
+
+    Logger.debug(
+      "Building ingredient prompt: #{length(chunks)} chunks, ingredients: #{ingredients}"
+    )
+
+    """
+    Eres un asistente de Lidl Chef especializado en encontrar recetas basadas en ingredientes.
+
+    ⚠️ RESPONDE SIEMPRE EN ESPAÑOL.
+
+    El usuario tiene estos ingredientes disponibles: #{ingredients}
+
+    Tu tarea es:
+    1. Buscar en el CONTEXTO recetas que usen ALGUNOS de estos ingredientes
+    2. Las recetas NO necesitan usar TODOS los ingredientes - con usar UNO o MÁS es suficiente
+    3. Priorizar recetas que usen más ingredientes del usuario
+    4. Para cada receta recomendada, indica qué ingredientes del usuario se usan
+    5. Si faltan ingredientes para completar la receta, muestra una lista de compras
+
+    REGLAS ESTRICTAS:
+    - SOLO recomienda recetas del CONTEXTO - NO inventes recetas
+    - Copia el nombre EXACTO y la URL EXACTA de cada receta
+    - Si una receta usa al menos 1 ingrediente del usuario, es válida
+    - Formatea así: "**[Nombre de Receta]** ([URL]) - Usa: [ingredientes que tiene el usuario]"
+
+    ===== CONTEXTO (Recetas disponibles) =====
+    #{reference_material}
+    ===== FIN DEL CONTEXTO =====
+
+    PREGUNTA DEL USUARIO: "#{question}"
+
+    Busca recetas en el contexto que usen: #{ingredients}
+
+    Si encuentras recetas relevantes, recomiéndalas con entusiasmo.
+    Si no encuentras ninguna receta que use estos ingredientes, sugiere qué otros ingredientes podrían complementarlos.
+    """
+  end
+
+  # Prompt optimized for meal planning
+  defp build_meal_planning_prompt(question, chunks, intent_info) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    days = intent_info.days || 1
+    dietary = intent_info.dietary
+
+    dietary_note = if dietary, do: "\n⚠️ El usuario requiere comidas #{dietary}.", else: ""
+
+    Logger.debug("Building meal planning prompt: #{length(chunks)} chunks, #{days} days")
+
+    """
+    Eres un asistente de Lidl Chef especializado en planificación de menús.
+
+    ⚠️ RESPONDE SIEMPRE EN ESPAÑOL.
+    #{dietary_note}
+
+    El usuario quiere un menú para #{days} día(s).
+    Tienes #{length(chunks)} recetas disponibles en el contexto para crear el menú.
+
+    INSTRUCCIONES PARA EL MENÚ:
+    1. Organiza las recetas por día y tipo de comida (Desayuno, Comida, Cena)
+    2. Asegura variedad: no repitas el mismo tipo de proteína dos días seguidos
+    3. Incluye recetas ligeras para cenas y más contundentes para comidas
+    4. Para cada receta, incluye nombre EXACTO y URL EXACTA del contexto
+
+    FORMATO DE RESPUESTA:
+    ## Día 1 (Lunes)
+    - 🌅 **Desayuno**: [Nombre de Receta](URL) - breve descripción
+    - 🍽️ **Comida**: [Nombre de Receta](URL) - breve descripción
+    - 🌙 **Cena**: [Nombre de Receta](URL) - breve descripción
+
+    (Repetir para cada día)
+
+    REGLAS:
+    - SOLO usa recetas del CONTEXTO
+    - NO inventes recetas ni URLs
+    - Tienes #{length(chunks)} recetas disponibles - ¡ÚSALAS!
+
+    ===== CONTEXTO (#{length(chunks)} Recetas disponibles) =====
+    #{reference_material}
+    ===== FIN DEL CONTEXTO =====
+
+    PREGUNTA: "#{question}"
+
+    Crea un menú variado y equilibrado usando las recetas del contexto.
+    """
+  end
+
+  # Prompt optimized for dietary restrictions
+  defp build_dietary_prompt(question, chunks, intent_info) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    dietary = intent_info.dietary || "especial"
+
+    Logger.debug("Building dietary prompt: #{length(chunks)} chunks, dietary: #{dietary}")
+
+    """
+    Eres un asistente de Lidl Chef especializado en alimentación #{dietary}.
+
+    ⚠️ RESPONDE SIEMPRE EN ESPAÑOL.
+
+    El usuario busca recetas que sean #{dietary}.
+
+    Tu tarea es:
+    1. Revisar el CONTEXTO y encontrar recetas aptas para dieta #{dietary}
+    2. Verificar que los ingredientes de cada receta cumplan con la restricción
+    3. Si una receta tiene ingredientes que no son #{dietary}, NO la recomiendes
+    4. Explicar por qué cada receta recomendada es apta para #{dietary}
+
+    REGLAS:
+    - SOLO recomienda recetas del CONTEXTO que sean #{dietary}
+    - Copia nombre EXACTO y URL EXACTA
+    - Si no hay recetas aptas, sugiérelo honestamente
+    - Indica si alguna receta puede adaptarse fácilmente
+
+    ===== CONTEXTO (Recetas disponibles) =====
+    #{reference_material}
+    ===== FIN DEL CONTEXTO =====
+
+    PREGUNTA: "#{question}"
+
+    Encuentra recetas #{dietary} en el contexto y recomiéndalas.
+    """
+  end
+
   defp build_agentic_prompt(question, chunks) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
 
     # Debug: Log prompt size and chunk count
     if Logger.level() == :debug do
-      Logger.debug("Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material")
+      Logger.debug(
+        "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
+      )
+
       # Count total recipes in reference material
       recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
       Logger.debug("  → Recipe entries found in context: #{recipe_count}")
       # Log first few URLs found in the reference material
-      urls = Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
+      urls =
+        Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
         |> Enum.map(&hd/1)
         |> Enum.uniq()
+
       Logger.debug("  → #{length(urls)} unique URLs in context")
       Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
     end
@@ -492,20 +740,21 @@ defmodule LidlChef.RecipeAssistant do
     # Check if this is a menu planning request
     is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
 
-    menu_instructions = if is_menu_request do
-      """
+    menu_instructions =
+      if is_menu_request do
+        """
 
-      ⚠️ IMPORTANTE PARA MENÚS:
-      - El usuario ha solicitado un MENÚ, NO recetas individuales
-      - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
-      - DEBES organizar estas recetas en un menú estructurado
-      - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
-      - Puedes y DEBES usar las recetas del contexto para crear el menú completo
-      - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
-      """
-    else
-      ""
-    end
+        ⚠️ IMPORTANTE PARA MENÚS:
+        - El usuario ha solicitado un MENÚ, NO recetas individuales
+        - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
+        - DEBES organizar estas recetas en un menú estructurado
+        - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
+        - Puedes y DEBES usar las recetas del contexto para crear el menú completo
+        - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
+        """
+      else
+        ""
+      end
 
     """
     #{@agentic_system_prompt}
