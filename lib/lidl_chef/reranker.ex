@@ -12,26 +12,32 @@ defmodule LidlChef.Reranker do
   @model "qwen3-reranker-0.6b"
   @base_url "http://127.0.0.1:1234"
   @default_threshold 5
-  @default_timeout 60_000
+  @default_timeout 120_000
 
+  # Qwen3 reranker models use chain-of-thought reasoning
+  # The model thinks in reasoning_content and outputs final answer in content
   @recipe_prompt_template """
-  You are a recipe relevance scorer. Rate how well the recipe matches the user's request.
-
-  User request: {question}
-
-  Recipe:
+  <query>
+  {question}
+  </query>
+  <document>
   {chunk_text}
+  </document>
 
-  Scoring criteria (0-10):
-  - 10: Recipe uses the exact ingredients mentioned and fits the request perfectly
-  - 7-9: Recipe uses most of the mentioned ingredients or closely matches preferences
-  - 4-6: Recipe uses some mentioned ingredients or partially matches the request
-  - 1-3: Recipe has minimal relevance to the request
-  - 0: Recipe is completely unrelated
+  Rate how well this recipe matches the user's request for recipe suggestions.
+  Consider:
+  - Does the recipe use ingredients mentioned by the user?
+  - Does it match dietary preferences if mentioned?
+  - A recipe does NOT need ALL ingredients - using SOME of them is a good match
 
-  IMPORTANT: A recipe does NOT need to use ALL mentioned ingredients. If it uses SOME of them well, it deserves a good score.
+  Score (0-10):
+  - 10: Perfect match, uses mentioned ingredients/preferences
+  - 7-9: Good match, uses most mentioned ingredients
+  - 4-6: Partial match, uses some mentioned ingredients
+  - 1-3: Weak match, minimal relevance
+  - 0: Not relevant at all
 
-  Return only a single number from 0 to 10.
+  Output ONLY a single integer 0-10.
   """
 
   @impl Arcana.Agent.Reranker
@@ -49,6 +55,7 @@ defmodule LidlChef.Reranker do
         Logger.info("[Reranker] Generated prompt:\n#{prompt}")
 
         score = get_score(prompt)
+        Logger.info("[Reranker] Score for chunk: #{score}")
         {chunk, score}
       end)
       |> Enum.filter(fn {_chunk, score} -> score >= threshold end)
@@ -70,8 +77,8 @@ defmodule LidlChef.Reranker do
       messages: [
         %{role: "user", content: prompt}
       ],
-      temperature: 0.1,
-      max_tokens: 50
+      temperature: 0.0,
+      max_tokens: 500
     }
 
     case Req.post("#{@base_url}/v1/chat/completions",
@@ -105,35 +112,48 @@ defmodule LidlChef.Reranker do
     content = Map.get(choice, "content", "")
     reasoning_content = Map.get(choice, "reasoning_content", "")
 
-    Logger.info("[Reranker] Content: #{content}, Reasoning: #{reasoning_content}")
+    Logger.info("[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}")
 
-    # Parse the score from content - it should be a number 0-10
-    case parse_score_from_content(content) do
-      {:ok, score} -> score
-      :error -> 0
+    # Try to extract score from content first, then from reasoning
+    score = parse_score_from_text(content) || parse_score_from_text(reasoning_content) || 0
+
+    Logger.info("[Reranker] Parsed score: #{score}")
+    score
+  end
+
+  defp parse_score_from_text(nil), do: nil
+  defp parse_score_from_text(""), do: nil
+
+  defp parse_score_from_text(text) when is_binary(text) do
+    text = String.trim(text)
+
+    # Try direct integer parse first
+    case Integer.parse(text) do
+      {num, ""} when num >= 0 and num <= 10 -> num
+      {num, _} when num >= 0 and num <= 10 -> num
+      _ ->
+        # Try to extract a number using regex
+        extract_number_from_text(text)
     end
   end
 
-  defp parse_score_from_content(content) when is_binary(content) do
-    content
-    |> String.trim()
-    |> extract_number()
-  end
-
-  defp parse_score_from_content(_), do: :error
-
-  defp extract_number(text) do
-    # Try to extract a number from the text (handles "7", "7/10", "Score: 7", etc.)
-    case Regex.run(~r/\b(\d+)\b/, text) do
+  defp extract_number_from_text(text) do
+    # Look for patterns like "8", "Score: 8", "8/10", etc.
+    case Regex.run(~r/\b(\d{1,2})\b/, text) do
       [_, num_str] ->
         case Integer.parse(num_str) do
-          {num, _} when num >= 0 and num <= 10 -> {:ok, num}
-          {num, _} when num > 10 -> {:ok, 10}
-          _ -> :error
+          {num, _} when num >= 0 and num <= 10 -> num
+          {num, _} when num > 10 -> 10
+          _ -> nil
         end
 
       nil ->
-        :error
+        # Check for yes/true patterns (high relevance)
+        cond do
+          Regex.match?(~r/\b(yes|true|relevant|match)\b/i, text) -> 8
+          Regex.match?(~r/\b(no|false|irrelevant|not)\b/i, text) -> 2
+          true -> nil
+        end
     end
   end
 end
