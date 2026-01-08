@@ -96,15 +96,20 @@ defmodule LidlChefWeb.RecipeLive do
         <div class="text-center mb-8">
           <h1 class="text-4xl font-bold text-gray-900 mb-2">🛒 Lidl Chef</h1>
           <p class="text-xl text-gray-600">AI-Powered Recipe Discovery System</p>
-          <p class="text-sm text-gray-500 mt-2">Search through 1,500+ Lidl recipes using AI embeddings</p>
+          <p class="text-sm text-gray-500 mt-2">
+            Search through 1,500+ Lidl recipes using AI embeddings
+          </p>
           <div class="mt-4">
-            <.link navigate="/chat" class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors">
+            <.link
+              navigate="/chat"
+              class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
+            >
               👨‍🍳 Chat with AI Chef
             </.link>
           </div>
         </div>
-
-        <!-- Search Form -->
+        
+    <!-- Search Form -->
         <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
           <.form :let={f} for={%{}} as={:search} phx-submit="search" id="search-form" class="mb-4">
             <div class="flex gap-4">
@@ -128,8 +133,8 @@ defmodule LidlChefWeb.RecipeLive do
               </button>
             </div>
           </.form>
-
-          <!-- Ingredient Search -->
+          
+    <!-- Ingredient Search -->
           <div class="border-t pt-4">
             <h3 class="text-lg font-medium mb-2">Search by Ingredients</h3>
             <div class="flex gap-4">
@@ -151,26 +156,27 @@ defmodule LidlChefWeb.RecipeLive do
             </div>
           </div>
         </div>
-
-        <!-- Error Display -->
+        
+    <!-- Error Display -->
         <%= if @error do %>
           <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
             <p class="text-red-800 font-medium">Error</p>
-            <p class="text-red-600 text-sm"><%= @error %></p>
+            <p class="text-red-600 text-sm">{@error}</p>
           </div>
         <% end %>
-
-        <!-- Results -->
+        
+    <!-- Results -->
         <%= if @loading do %>
           <div class="text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600">
+            </div>
             <p class="mt-4 text-gray-600">Searching recipes...</p>
           </div>
         <% else %>
           <%= if length(@results) > 0 do %>
             <div class="mb-4">
               <h2 class="text-xl font-semibold text-gray-900">
-                Found <%= length(@results) %> recipes
+                Found {length(@results)} recipes
               </h2>
             </div>
 
@@ -178,7 +184,7 @@ defmodule LidlChefWeb.RecipeLive do
               <%= for result <- @results do %>
                 <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden">
                   <div class="p-6">
-                    <%= render_recipe(assigns, result) %>
+                    {render_recipe(assigns, result)}
                   </div>
                 </div>
               <% end %>
@@ -186,7 +192,7 @@ defmodule LidlChefWeb.RecipeLive do
           <% else %>
             <%= unless @query == "" do %>
               <div class="text-center py-12">
-                <p class="text-gray-500">No recipes found for "<%= @query %>"</p>
+                <p class="text-gray-500">No recipes found for "{@query}"</p>
                 <p class="text-sm text-gray-400 mt-2">Try different keywords or ingredients</p>
               </div>
             <% end %>
@@ -207,31 +213,32 @@ defmodule LidlChefWeb.RecipeLive do
     categories = extract_categories(lines)
     url = extract_url(lines)
 
-    assigns = assign(assigns, :recipe_data, %{
-      title: title,
-      servings: servings,
-      ingredients: ingredients,
-      nutrition: nutrition,
-      categories: categories,
-      url: url,
-      score: result.score || result.semantic_score
-    })
+    assigns =
+      assign(assigns, :recipe_data, %{
+        title: title,
+        servings: servings,
+        ingredients: ingredients,
+        nutrition: nutrition,
+        categories: categories,
+        url: url,
+        score: result.score || result.semantic_score
+      })
 
     ~H"""
     <div>
       <h3 class="font-semibold text-lg text-gray-900 mb-2 line-clamp-2">
-        <%= @recipe_data.title %>
+        {@recipe_data.title}
       </h3>
 
       <div class="text-sm text-gray-600 mb-3">
         <%= if @recipe_data.servings do %>
           <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mr-2">
-            🍽️ <%= @recipe_data.servings %> servings
+            🍽️ {@recipe_data.servings} servings
           </span>
         <% end %>
 
         <span class="inline-block bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs">
-          🎯 Score: <%= Float.round(@recipe_data.score * 100, 1) %>%
+          🎯 Score: {Float.round(@recipe_data.score * 100, 1)}%
         </span>
       </div>
 
@@ -240,10 +247,10 @@ defmodule LidlChefWeb.RecipeLive do
           <h4 class="font-medium text-sm text-gray-800 mb-1">Ingredients:</h4>
           <ul class="text-xs text-gray-600 space-y-1">
             <%= for ingredient <- Enum.take(@recipe_data.ingredients, 5) do %>
-              <li><%= ingredient %></li>
+              <li>{ingredient}</li>
             <% end %>
             <%= if length(@recipe_data.ingredients) > 5 do %>
-              <li class="text-gray-400">... and <%= length(@recipe_data.ingredients) - 5 %> more</li>
+              <li class="text-gray-400">... and {length(@recipe_data.ingredients) - 5} more</li>
             <% end %>
           </ul>
         </div>
@@ -251,13 +258,13 @@ defmodule LidlChefWeb.RecipeLive do
 
       <%= if @recipe_data.nutrition do %>
         <div class="mb-3">
-          <p class="text-xs text-gray-600"><strong>Nutrition:</strong> <%= @recipe_data.nutrition %></p>
+          <p class="text-xs text-gray-600"><strong>Nutrition:</strong> {@recipe_data.nutrition}</p>
         </div>
       <% end %>
 
       <%= if @recipe_data.categories do %>
         <div class="mb-3">
-          <p class="text-xs text-gray-500"><strong>Categories:</strong> <%= @recipe_data.categories %></p>
+          <p class="text-xs text-gray-500"><strong>Categories:</strong> {@recipe_data.categories}</p>
         </div>
       <% end %>
 
@@ -293,6 +300,7 @@ defmodule LidlChefWeb.RecipeLive do
   defp extract_ingredients(lines) do
     # Find ingredients section
     ingredients_start = Enum.find_index(lines, &(&1 == "Ingredients:"))
+
     if ingredients_start do
       lines
       |> Enum.drop(ingredients_start + 1)

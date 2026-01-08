@@ -87,12 +87,16 @@ defmodule Mix.Tasks.LidlChef.LoadRecipes do
         :ok
 
       {:error, _reason} when retries > 0 ->
-        Mix.shell().info("⏳ Embedding service not ready yet, retrying in #{div(delay, 1000)}s... (#{retries} attempts left)")
+        Mix.shell().info(
+          "⏳ Embedding service not ready yet, retrying in #{div(delay, 1000)}s... (#{retries} attempts left)"
+        )
+
         Process.sleep(delay)
         wait_for_embedder_ready(retries - 1, delay)
 
       {:error, reason} ->
         Mix.shell().error("❌ Embedding service failed to start: #{inspect(reason)}")
+
         Mix.shell().error("""
 
         This usually means:
@@ -102,6 +106,7 @@ defmodule Mix.Tasks.LidlChef.LoadRecipes do
 
         Try running with a smaller model or check your system resources.
         """)
+
         System.halt(1)
     end
   end

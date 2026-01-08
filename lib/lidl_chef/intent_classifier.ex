@@ -8,7 +8,12 @@ defmodule LidlChef.IntentClassifier do
 
   require Logger
 
-  @type intent :: :ingredient_search | :meal_planning | :recipe_question | :dietary_filter | :general_search
+  @type intent ::
+          :ingredient_search
+          | :meal_planning
+          | :recipe_question
+          | :dietary_filter
+          | :general_search
 
   @intent_descriptions %{
     ingredient_search: "User has specific ingredients and wants recipes that use them",
@@ -124,42 +129,76 @@ defmodule LidlChef.IntentClassifier do
 
   defp is_meal_planning?(query) do
     String.contains?(query, ["menú", "menu", "semanal", "semana", "diario"]) or
-    Regex.match?(~r/\d+\s*d[íi]as?/, query) or
-    String.contains?(query, ["plan de comidas", "planificar comidas"])
+      Regex.match?(~r/\d+\s*d[íi]as?/, query) or
+      String.contains?(query, ["plan de comidas", "planificar comidas"])
   end
 
   defp has_ingredient_possession_pattern?(query) do
     # "Tengo X", "tenemos X", "hay X en casa", "por casa"
     Regex.match?(~r/\b(tengo|tenemos|hay|dispongo)\b.*\b(y|,|e)\b/i, query) or
-    String.contains?(query, "por casa") or
-    String.contains?(query, "en casa") or
-    String.contains?(query, "en la nevera") or
-    String.contains?(query, "en el frigo")
+      String.contains?(query, "por casa") or
+      String.contains?(query, "en casa") or
+      String.contains?(query, "en la nevera") or
+      String.contains?(query, "en el frigo")
   end
 
   defp has_ingredient_query_pattern?(query) do
     # "con X e Y", "usando X", "que use X"
     Regex.match?(~r/\b(con|usando|que use|que lleve|con base de)\b/i, query) or
-    Regex.match?(~r/(que|qué)\s+(puedo|podría|podemos)\s+(hacer|cocinar|preparar)/i, query) or
-    Regex.match?(~r/(recetas?|platos?)\s+(con|de|usando)/i, query)
+      Regex.match?(~r/(que|qué)\s+(puedo|podría|podemos)\s+(hacer|cocinar|preparar)/i, query) or
+      Regex.match?(~r/(recetas?|platos?)\s+(con|de|usando)/i, query)
   end
 
   defp is_recipe_question?(query) do
     Regex.match?(~r/\b(como|cómo)\s+(se\s+)?(hace|prepara|cocina)/i, query) or
-    Regex.match?(~r/\b(cuanto|cuánto)\s+tiempo/i, query) or
-    Regex.match?(~r/\b(tips?|consejos?|trucos?)\s+(para|de)/i, query)
+      Regex.match?(~r/\b(cuanto|cuánto)\s+tiempo/i, query) or
+      Regex.match?(~r/\b(tips?|consejos?|trucos?)\s+(para|de)/i, query)
   end
 
   defp extract_ingredients(query) do
     # Common Spanish ingredients to detect
     common_ingredients = [
-      "pollo", "arroz", "pasta", "macarrones", "espaguetis", "lentejas",
-      "garbanzos", "judías", "alubias", "tomate", "cebolla", "ajo",
-      "pimiento", "zanahoria", "patata", "huevo", "queso", "leche",
-      "carne", "cerdo", "ternera", "pescado", "atún", "salmón",
-      "verdura", "verduras", "calabacín", "berenjena", "espinacas",
-      "champiñones", "setas", "pan", "harina", "aceite", "mantequilla",
-      "tofu", "tempeh", "jamón", "bacon", "chorizo", "morcilla"
+      "pollo",
+      "arroz",
+      "pasta",
+      "macarrones",
+      "espaguetis",
+      "lentejas",
+      "garbanzos",
+      "judías",
+      "alubias",
+      "tomate",
+      "cebolla",
+      "ajo",
+      "pimiento",
+      "zanahoria",
+      "patata",
+      "huevo",
+      "queso",
+      "leche",
+      "carne",
+      "cerdo",
+      "ternera",
+      "pescado",
+      "atún",
+      "salmón",
+      "verdura",
+      "verduras",
+      "calabacín",
+      "berenjena",
+      "espinacas",
+      "champiñones",
+      "setas",
+      "pan",
+      "harina",
+      "aceite",
+      "mantequilla",
+      "tofu",
+      "tempeh",
+      "jamón",
+      "bacon",
+      "chorizo",
+      "morcilla"
     ]
 
     # Find all ingredients mentioned in the query
@@ -191,8 +230,12 @@ defmodule LidlChef.IntentClassifier do
 
   defp extract_days(query) do
     cond do
-      String.contains?(query, ["semanal", "semana"]) -> 7
-      String.contains?(query, "diario") -> 1
+      String.contains?(query, ["semanal", "semana"]) ->
+        7
+
+      String.contains?(query, "diario") ->
+        1
+
       true ->
         case Regex.run(~r/(\d+)\s*d[íi]as?/, query) do
           [_, days] -> String.to_integer(days)
@@ -214,7 +257,10 @@ defmodule LidlChef.IntentClassifier do
         parse_classification_response(response, query)
 
       {:error, reason} ->
-        Logger.warning("LLM classification failed: #{inspect(reason)}, falling back to rule-based")
+        Logger.warning(
+          "LLM classification failed: #{inspect(reason)}, falling back to rule-based"
+        )
+
         fast_classify(query)
     end
   end
@@ -222,61 +268,71 @@ defmodule LidlChef.IntentClassifier do
   defp parse_classification_response(response, original_query) do
     lines = String.split(response, "\n", trim: true)
 
-    parsed = Enum.reduce(lines, %{}, fn line, acc ->
-      case String.split(line, ":", parts: 2) do
-        [key, value] ->
-          key = key |> String.trim() |> String.upcase()
-          value = String.trim(value)
-          Map.put(acc, key, value)
-        _ ->
-          acc
-      end
-    end)
+    parsed =
+      Enum.reduce(lines, %{}, fn line, acc ->
+        case String.split(line, ":", parts: 2) do
+          [key, value] ->
+            key = key |> String.trim() |> String.upcase()
+            value = String.trim(value)
+            Map.put(acc, key, value)
 
-    intent = case Map.get(parsed, "INTENT", "GENERAL_SEARCH") |> String.upcase() do
-      "INGREDIENT_SEARCH" -> :ingredient_search
-      "MEAL_PLANNING" -> :meal_planning
-      "RECIPE_QUESTION" -> :recipe_question
-      "DIETARY_FILTER" -> :dietary_filter
-      _ -> :general_search
-    end
-
-    ingredients = case Map.get(parsed, "INGREDIENTS", "NONE") do
-      "NONE" -> extract_ingredients(String.downcase(original_query))
-      value -> String.split(value, ",") |> Enum.map(&String.trim/1)
-    end
-
-    meal_type = case Map.get(parsed, "MEAL_TYPE", "NONE") do
-      "NONE" -> nil
-      "breakfast" -> :breakfast
-      "lunch" -> :lunch
-      "dinner" -> :dinner
-      "snack" -> :snack
-      _ -> nil
-    end
-
-    dietary = case Map.get(parsed, "DIETARY", "NONE") do
-      "NONE" -> nil
-      value -> value
-    end
-
-    days = case Map.get(parsed, "DAYS", "NONE") do
-      "NONE" -> nil
-      value ->
-        case Integer.parse(value) do
-          {n, _} -> n
-          :error -> nil
+          _ ->
+            acc
         end
-    end
+      end)
 
-    {:ok, %{
-      intent: intent,
-      ingredients: ingredients,
-      meal_type: meal_type,
-      dietary: dietary,
-      days: days,
-      confidence: :high
-    }}
+    intent =
+      case Map.get(parsed, "INTENT", "GENERAL_SEARCH") |> String.upcase() do
+        "INGREDIENT_SEARCH" -> :ingredient_search
+        "MEAL_PLANNING" -> :meal_planning
+        "RECIPE_QUESTION" -> :recipe_question
+        "DIETARY_FILTER" -> :dietary_filter
+        _ -> :general_search
+      end
+
+    ingredients =
+      case Map.get(parsed, "INGREDIENTS", "NONE") do
+        "NONE" -> extract_ingredients(String.downcase(original_query))
+        value -> String.split(value, ",") |> Enum.map(&String.trim/1)
+      end
+
+    meal_type =
+      case Map.get(parsed, "MEAL_TYPE", "NONE") do
+        "NONE" -> nil
+        "breakfast" -> :breakfast
+        "lunch" -> :lunch
+        "dinner" -> :dinner
+        "snack" -> :snack
+        _ -> nil
+      end
+
+    dietary =
+      case Map.get(parsed, "DIETARY", "NONE") do
+        "NONE" -> nil
+        value -> value
+      end
+
+    days =
+      case Map.get(parsed, "DAYS", "NONE") do
+        "NONE" ->
+          nil
+
+        value ->
+          case Integer.parse(value) do
+            {n, _} -> n
+            :error -> nil
+          end
+      end
+
+    {:ok,
+     %{
+       intent: intent,
+       ingredients: ingredients,
+       meal_type: meal_type,
+       dietary: dietary,
+       days: days,
+       confidence: :high
+     }}
   end
 
   @doc """

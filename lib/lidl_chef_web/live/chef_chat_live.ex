@@ -77,7 +77,9 @@ defmodule LidlChefWeb.ChefChatLive do
     end
   end
 
-  defp format_error({:no_answer, _}), do: "I couldn't find relevant recipes for your query. Try rephrasing your question."
+  defp format_error({:no_answer, _}),
+    do: "I couldn't find relevant recipes for your query. Try rephrasing your question."
+
   defp format_error({:agent_error, msg}), do: "An error occurred: #{msg}"
   defp format_error(reason), do: "Something went wrong: #{inspect(reason)}"
 
@@ -101,7 +103,9 @@ defmodule LidlChefWeb.ChefChatLive do
         <div :if={@messages == []} class="flex-1 flex items-center justify-center">
           <div class="text-center max-w-2xl">
             <div class="text-6xl mb-6">🍳</div>
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">What would you like to cook today?</h2>
+            <h2 class="text-xl font-semibold text-gray-700 mb-4">
+              What would you like to cook today?
+            </h2>
             <p class="text-gray-500 mb-6">Try asking me something like:</p>
             <div class="grid gap-3">
               <button
@@ -109,14 +113,18 @@ defmodule LidlChefWeb.ChefChatLive do
                 phx-value-message="I have tomato, pasta and meat. What can I prepare?"
                 class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
               >
-                <span class="text-gray-700">"I have tomato, pasta and meat. What can I prepare?"</span>
+                <span class="text-gray-700">
+                  "I have tomato, pasta and meat. What can I prepare?"
+                </span>
               </button>
               <button
                 phx-click="send_suggestion"
                 phx-value-message="I would like to prepare a vegan recipe, what can you suggest me?"
                 class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
               >
-                <span class="text-gray-700">"I would like to prepare a vegan recipe, what can you suggest me?"</span>
+                <span class="text-gray-700">
+                  "I would like to prepare a vegan recipe, what can you suggest me?"
+                </span>
               </button>
               <button
                 phx-click="send_suggestion"
@@ -130,26 +138,38 @@ defmodule LidlChefWeb.ChefChatLive do
                 phx-value-message="Puedes darme un menú semanal variado alto en proteínas?"
                 class="p-4 bg-white border border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left"
               >
-                <span class="text-gray-700">"Puedes darme un menú semanal variado alto en proteínas?"</span>
+                <span class="text-gray-700">
+                  "Puedes darme un menú semanal variado alto en proteínas?"
+                </span>
               </button>
               <button
                 phx-click="send_suggestion"
                 phx-value-message="Tengo tofu y naranja, quiero preparar una comida vegana"
                 class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
               >
-                <span class="text-gray-700">"Tengo tofu y naranja, quiero preparar una comida vegana"</span>
+                <span class="text-gray-700">
+                  "Tengo tofu y naranja, quiero preparar una comida vegana"
+                </span>
               </button>
             </div>
           </div>
         </div>
 
         <%!-- Chat Messages --%>
-        <div :if={@messages != []} class="flex-1 overflow-y-auto mb-4 space-y-4" id="chat-messages" phx-hook="ScrollToBottom">
-          <div :for={message <- @messages} class={[
-            "flex",
-            message.role == :user && "justify-end",
-            message.role == :assistant && "justify-start"
-          ]}>
+        <div
+          :if={@messages != []}
+          class="flex-1 overflow-y-auto mb-4 space-y-4"
+          id="chat-messages"
+          phx-hook="ScrollToBottom"
+        >
+          <div
+            :for={message <- @messages}
+            class={[
+              "flex",
+              message.role == :user && "justify-end",
+              message.role == :assistant && "justify-start"
+            ]}
+          >
             <div class={[
               "max-w-[80%] rounded-2xl px-4 py-3 shadow-sm",
               message.role == :user && "bg-blue-600 text-white",
@@ -186,7 +206,13 @@ defmodule LidlChefWeb.ChefChatLive do
 
         <%!-- Input Form --%>
         <div class="bg-white border border-gray-200 rounded-2xl p-2 shadow-lg">
-          <.form for={%{}} phx-submit="send_message" phx-change="update_input" id="chat-form" class="flex gap-2">
+          <.form
+            for={%{}}
+            phx-submit="send_message"
+            phx-change="update_input"
+            id="chat-form"
+            class="flex gap-2"
+          >
             <input
               type="text"
               name="chat[message]"
@@ -220,7 +246,10 @@ defmodule LidlChefWeb.ChefChatLive do
     text
     |> String.replace(~r/\*\*(.+?)\*\*/, "<strong>\\1</strong>")
     |> String.replace(~r/\*(.+?)\*/, "<em>\\1</em>")
-    |> String.replace(~r/\[([^\]]+)\]\(([^)]+)\)/, "<a href=\"\\2\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>")
+    |> String.replace(
+      ~r/\[([^\]]+)\]\(([^)]+)\)/,
+      "<a href=\"\\2\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>"
+    )
     |> String.replace(~r/^### (.+)$/m, "<h3 class=\"font-bold text-lg mt-4 mb-2\">\\1</h3>")
     |> String.replace(~r/^## (.+)$/m, "<h2 class=\"font-bold text-xl mt-4 mb-2\">\\1</h2>")
     |> String.replace(~r/^# (.+)$/m, "<h1 class=\"font-bold text-2xl mt-4 mb-2\">\\1</h1>")
@@ -229,6 +258,9 @@ defmodule LidlChefWeb.ChefChatLive do
     |> String.replace(~r/\n\n/, "</p><p class=\"my-2\">")
     |> then(&"<p class=\"my-2\">#{&1}</p>")
     # Only convert plain URLs that are NOT already inside HTML tags (negative lookbehind)
-    |> String.replace(~r/(?<!href=")(?<!">)(https?:\/\/[^\s<)"]+)(?![^<]*<\/a>)/, "<a href=\"\\1\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>")
+    |> String.replace(
+      ~r/(?<!href=")(?<!">)(https?:\/\/[^\s<)"]+)(?![^<]*<\/a>)/,
+      "<a href=\"\\1\" target=\"_blank\" class=\"text-blue-600 hover:underline\">\\1</a>"
+    )
   end
 end

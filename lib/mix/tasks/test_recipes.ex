@@ -13,6 +13,7 @@ defmodule Mix.Tasks.TestRecipes do
 
     # Test basic search
     IO.puts("🔍 Testing basic recipe search...")
+
     try do
       {:ok, results} = LidlChef.Recipes.search("pasta with vegetables", graph: false, limit: 3)
 
@@ -29,13 +30,15 @@ defmodule Mix.Tasks.TestRecipes do
 
     # Test direct Arcana search without GraphRAG
     IO.puts("\n🔍 Testing direct Arcana search...")
+
     try do
-      {:ok, results} = Arcana.search("chicken recipes",
-        repo: LidlChef.Repo,
-        collection: "lidl_recipes",
-        limit: 3,
-        mode: :semantic
-      )
+      {:ok, results} =
+        Arcana.search("chicken recipes",
+          repo: LidlChef.Repo,
+          collection: "lidl_recipes",
+          limit: 3,
+          mode: :semantic
+        )
 
       IO.puts("✅ Found #{length(results)} recipes via direct search")
 
@@ -50,8 +53,10 @@ defmodule Mix.Tasks.TestRecipes do
 
     # Test LLM connectivity through RecipeAssistant
     IO.puts("\n🤖 Testing LLM connectivity...")
+
     try do
       {:ok, response} = LidlChef.RecipeAssistant.ask("What is a simple pasta recipe?")
+
       if String.length(response) > 0 do
         IO.puts("✅ LLM is working: #{String.slice(response, 0, 100)}...")
       else
@@ -63,14 +68,26 @@ defmodule Mix.Tasks.TestRecipes do
 
     # Test database connection
     IO.puts("\n📊 Testing database stats...")
+
     try do
-      collection = Arcana.Collection.get_or_create!("lidl_recipes", repo: LidlChef.Repo)
-      documents = Arcana.Document.list_by_collection(collection.id, repo: LidlChef.Repo)
-      chunks = Arcana.Chunk.count_by_collection(collection.id, repo: LidlChef.Repo)
+      {:ok, collection} = Arcana.Collection.get_or_create("lidl_recipes", LidlChef.Repo)
+      import Ecto.Query
+
+      documents =
+        LidlChef.Repo.all(from d in Arcana.Document, where: d.collection_id == ^collection.id)
+
+      chunks_count =
+        LidlChef.Repo.aggregate(
+          from(c in Arcana.Chunk,
+            join: d in assoc(c, :document),
+            where: d.collection_id == ^collection.id
+          ),
+          :count
+        )
 
       IO.puts("✅ Database stats:")
       IO.puts("  - Documents: #{length(documents)}")
-      IO.puts("  - Total chunks: #{chunks}")
+      IO.puts("  - Total chunks: #{chunks_count}")
       IO.puts("  - Collection: #{collection.name}")
     rescue
       e -> IO.puts("❌ Database check failed: #{inspect(e)}")

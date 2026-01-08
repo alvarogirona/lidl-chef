@@ -36,30 +36,33 @@ defmodule Mix.Tasks.TestAssistant do
     results = []
 
     # Simple tests
-    results = if run_simple do
-      IO.puts("📋 Running Simple Tests...\n")
-      results ++ run_simple_tests(verbose)
-    else
-      results
-    end
+    results =
+      if run_simple do
+        IO.puts("📋 Running Simple Tests...\n")
+        results ++ run_simple_tests(verbose)
+      else
+        results
+      end
 
     # Complex tests
-    results = if run_complex do
-      IO.puts("\n📋 Running Complex Tests (Menu Planning)...\n")
-      results ++ run_complex_tests(verbose)
-    else
-      results
-    end
+    results =
+      if run_complex do
+        IO.puts("\n📋 Running Complex Tests (Menu Planning)...\n")
+        results ++ run_complex_tests(verbose)
+      else
+        results
+      end
 
     # Print summary
     print_summary(results)
   end
 
   defp parse_args(args) do
-    {opts, _, _} = OptionParser.parse(args,
-      switches: [verbose: :boolean, simple: :boolean, complex: :boolean],
-      aliases: [v: :verbose, s: :simple, c: :complex]
-    )
+    {opts, _, _} =
+      OptionParser.parse(args,
+        switches: [verbose: :boolean, simple: :boolean, complex: :boolean],
+        aliases: [v: :verbose, s: :simple, c: :complex]
+      )
 
     # If neither simple nor complex is specified, run both
     if !Keyword.has_key?(opts, :simple) and !Keyword.has_key?(opts, :complex) do
@@ -191,43 +194,46 @@ defmodule Mix.Tasks.TestAssistant do
 
     start_time = System.monotonic_time(:millisecond)
 
-    result = try do
-      case test_fn.() do
-        {:ok, answer} ->
-          validation = validator.(answer)
-          end_time = System.monotonic_time(:millisecond)
-          duration = end_time - start_time
+    result =
+      try do
+        case test_fn.() do
+          {:ok, answer} ->
+            validation = validator.(answer)
+            end_time = System.monotonic_time(:millisecond)
+            duration = end_time - start_time
 
-          if verbose do
-            IO.puts("\n" <> String.duplicate("-", 40))
-            IO.puts("Response (#{duration}ms):")
-            IO.puts(String.slice(answer, 0, 2000))
-            if String.length(answer) > 2000, do: IO.puts("... [truncated]")
-            IO.puts(String.duplicate("-", 40))
-          end
+            if verbose do
+              IO.puts("\n" <> String.duplicate("-", 40))
+              IO.puts("Response (#{duration}ms):")
+              IO.puts(String.slice(answer, 0, 2000))
+              if String.length(answer) > 2000, do: IO.puts("... [truncated]")
+              IO.puts(String.duplicate("-", 40))
+            end
 
-          case validation do
-            :ok ->
-              IO.puts("✅ PASSED (#{duration}ms)")
-              {:passed, name, duration}
+            case validation do
+              :ok ->
+                IO.puts("✅ PASSED (#{duration}ms)")
+                {:passed, name, duration}
 
-            {:error, reason} ->
-              IO.puts("❌ FAILED - #{reason}")
-              if not verbose do
-                IO.puts("    Response preview: #{String.slice(answer, 0, 200)}...")
-              end
-              {:failed, name, reason}
-          end
+              {:error, reason} ->
+                IO.puts("❌ FAILED - #{reason}")
 
-        {:error, error} ->
-          IO.puts("❌ ERROR - #{inspect(error)}")
-          {:error, name, error}
+                if not verbose do
+                  IO.puts("    Response preview: #{String.slice(answer, 0, 200)}...")
+                end
+
+                {:failed, name, reason}
+            end
+
+          {:error, error} ->
+            IO.puts("❌ ERROR - #{inspect(error)}")
+            {:error, name, error}
+        end
+      rescue
+        e ->
+          IO.puts("❌ EXCEPTION - #{Exception.message(e)}")
+          {:error, name, e}
       end
-    rescue
-      e ->
-        IO.puts("❌ EXCEPTION - #{Exception.message(e)}")
-        {:error, name, e}
-    end
 
     result
   end
@@ -259,7 +265,8 @@ defmodule Mix.Tasks.TestAssistant do
     has_dinner = String.contains?(String.downcase(answer), ["cena", "dinner"])
 
     # Count unique recipe URLs
-    urls = Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)\]]+}, answer)
+    urls =
+      Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)\]]+}, answer)
       |> Enum.map(&hd/1)
       |> Enum.uniq()
 
@@ -277,16 +284,31 @@ defmodule Mix.Tasks.TestAssistant do
 
   defp validate_weekly_menu(answer) do
     # Check for day structure
-    day_keywords = ["lunes", "monday", "martes", "tuesday", "miércoles", "wednesday",
-                    "jueves", "thursday", "viernes", "friday", "sábado", "saturday",
-                    "domingo", "sunday"]
+    day_keywords = [
+      "lunes",
+      "monday",
+      "martes",
+      "tuesday",
+      "miércoles",
+      "wednesday",
+      "jueves",
+      "thursday",
+      "viernes",
+      "friday",
+      "sábado",
+      "saturday",
+      "domingo",
+      "sunday"
+    ]
 
-    days_found = Enum.count(day_keywords, fn day ->
-      String.contains?(String.downcase(answer), day)
-    end)
+    days_found =
+      Enum.count(day_keywords, fn day ->
+        String.contains?(String.downcase(answer), day)
+      end)
 
     # Count unique recipe URLs
-    urls = Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)\]]+}, answer)
+    urls =
+      Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)\]]+}, answer)
       |> Enum.map(&hd/1)
       |> Enum.uniq()
 
@@ -336,9 +358,11 @@ defmodule Mix.Tasks.TestAssistant do
 
       # List failures
       failures = Enum.filter(results, fn {status, _, _} -> status in [:failed, :error] end)
+
       if length(failures) > 0 do
         IO.puts("\nFailed tests:")
-        Enum.each(failures, fn {status, name, reason} ->
+
+        Enum.each(failures, fn {_status, name, reason} ->
           IO.puts("  • #{name}: #{inspect(reason)}")
         end)
       end
