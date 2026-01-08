@@ -78,76 +78,73 @@ defmodule LidlChefWeb.ChefChatLive do
   end
 
   defp format_error({:no_answer, _}),
-    do: "I couldn't find relevant recipes for your query. Try rephrasing your question."
+    do: "No encontré recetas relevantes para tu consulta. Intenta reformular tu pregunta."
 
-  defp format_error({:agent_error, msg}), do: "An error occurred: #{msg}"
-  defp format_error(reason), do: "Something went wrong: #{inspect(reason)}"
+  defp format_error({:agent_error, msg}), do: "Ha ocurrido un error: #{msg}"
+  defp format_error(reason), do: "Algo salió mal: #{inspect(reason)}"
 
   @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={%{}}>
-      <div class="max-w-4xl mx-auto p-6 h-[calc(100vh-8rem)] flex flex-col">
+      <div class="flex-1 flex flex-col max-w-4xl mx-auto w-full px-4 sm:px-6 py-6">
         <%!-- Header --%>
-        <div class="text-center mb-6">
-          <h1 class="text-3xl font-bold text-gray-900 mb-2">👨‍🍳 Lidl Chef Chat</h1>
-          <p class="text-gray-600">Ask me anything about recipes!</p>
-          <div class="flex justify-center gap-4 mt-3">
-            <.link navigate="/recipes" class="text-sm text-blue-600 hover:text-blue-800 underline">
-              ← Back to Recipe Search
-            </.link>
-          </div>
+        <div class="text-center mb-6 flex-shrink-0">
+          <h1 class="text-2xl font-bold text-base-content mb-1">Asistente de Recetas IA</h1>
+          <p class="text-base-content/60 text-sm">¡Pregúntame lo que quieras sobre recetas!</p>
         </div>
 
         <%!-- Suggestions for empty state --%>
         <div :if={@messages == []} class="flex-1 flex items-center justify-center">
-          <div class="text-center max-w-2xl">
-            <div class="text-6xl mb-6">🍳</div>
-            <h2 class="text-xl font-semibold text-gray-700 mb-4">
-              What would you like to cook today?
+          <div class="text-center max-w-2xl w-full">
+            <div class="w-16 h-16 bg-[#0050AA]/10 rounded-2xl flex items-center justify-center mx-auto mb-6">
+              <span class="text-3xl">🍳</span>
+            </div>
+            <h2 class="text-lg font-semibold text-base-content mb-2">
+              ¿Qué te gustaría cocinar hoy?
             </h2>
-            <p class="text-gray-500 mb-6">Try asking me something like:</p>
-            <div class="grid gap-3">
+            <p class="text-base-content/60 text-sm mb-6">Prueba una de estas sugerencias:</p>
+            <div class="grid gap-2">
               <button
                 phx-click="send_suggestion"
-                phx-value-message="I have tomato, pasta and meat. What can I prepare?"
-                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                phx-value-message="Tengo tomate, pasta y carne. ¿Qué puedo preparar?"
+                class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#0050AA]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-gray-700">
-                  "I have tomato, pasta and meat. What can I prepare?"
+                <span class="text-base-content/80">
+                  "Tengo tomate, pasta y carne. ¿Qué puedo preparar?"
                 </span>
               </button>
               <button
                 phx-click="send_suggestion"
-                phx-value-message="I would like to prepare a vegan recipe, what can you suggest me?"
-                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                phx-value-message="Me gustaría preparar una receta vegana, ¿qué me sugieres?"
+                class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#0050AA]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-gray-700">
-                  "I would like to prepare a vegan recipe, what can you suggest me?"
+                <span class="text-base-content/80">
+                  "Me gustaría preparar una receta vegana, ¿qué me sugieres?"
                 </span>
               </button>
               <button
                 phx-click="send_suggestion"
                 phx-value-message="Quiero que me sugieras un menú diario (desayuno, comida y cena) vegano. ¿Qué recetas me recomiendas?"
-                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left"
+                class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#FFF000]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-gray-700">"Quiero que me sugieras un menú diario vegano"</span>
+                <span class="text-base-content/80">"Quiero que me sugieras un menú diario vegano"</span>
               </button>
               <button
                 phx-click="send_suggestion"
                 phx-value-message="Puedes darme un menú semanal variado alto en proteínas?"
-                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-green-400 hover:bg-green-50 transition-colors text-left"
+                class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#FFF000]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-gray-700">
+                <span class="text-base-content/80">
                   "Puedes darme un menú semanal variado alto en proteínas?"
                 </span>
               </button>
               <button
                 phx-click="send_suggestion"
                 phx-value-message="Tengo tofu y naranja, quiero preparar una comida vegana"
-                class="p-4 bg-white border border-gray-200 rounded-lg hover:border-blue-400 hover:bg-blue-50 transition-colors text-left"
+                class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#0050AA]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-gray-700">
+                <span class="text-base-content/80">
                   "Tengo tofu y naranja, quiero preparar una comida vegana"
                 </span>
               </button>
@@ -158,7 +155,7 @@ defmodule LidlChefWeb.ChefChatLive do
         <%!-- Chat Messages --%>
         <div
           :if={@messages != []}
-          class="flex-1 overflow-y-auto mb-4 space-y-4"
+          class="flex-1 overflow-y-auto space-y-4 mb-4"
           id="chat-messages"
           phx-hook="ScrollToBottom"
         >
@@ -171,11 +168,11 @@ defmodule LidlChefWeb.ChefChatLive do
             ]}
           >
             <div class={[
-              "max-w-[80%] rounded-2xl px-4 py-3 shadow-sm",
-              message.role == :user && "bg-blue-600 text-white",
-              message.role == :assistant && "bg-white border border-gray-200 text-gray-800"
+              "max-w-[85%] rounded-2xl px-4 py-3",
+              message.role == :user && "bg-[#0050AA] text-white",
+              message.role == :assistant && "bg-base-200 text-base-content"
             ]}>
-              <div :if={message.role == :assistant} class="prose prose-sm max-w-none">
+              <div :if={message.role == :assistant} class="prose prose-sm max-w-none dark:prose-invert">
                 {raw(format_markdown(message.content))}
               </div>
               <div :if={message.role == :user}>
@@ -186,8 +183,8 @@ defmodule LidlChefWeb.ChefChatLive do
 
           <%!-- Loading indicator --%>
           <div :if={@loading} class="flex justify-start">
-            <div class="bg-white border border-gray-200 rounded-2xl px-4 py-3 shadow-sm">
-              <div class="flex items-center gap-2 text-gray-500">
+            <div class="bg-base-200 rounded-2xl px-4 py-3">
+              <div class="flex items-center gap-2 text-base-content/60">
                 <div class="flex gap-1">
                   <span class="animate-bounce delay-0">●</span>
                   <span class="animate-bounce delay-100">●</span>
@@ -200,12 +197,12 @@ defmodule LidlChefWeb.ChefChatLive do
         </div>
 
         <%!-- Error message --%>
-        <div :if={@error} class="mb-4 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
+        <div :if={@error} class="mb-4 p-3 bg-[#E60A14]/10 border border-[#E60A14]/20 rounded-xl text-[#E60A14] text-sm flex-shrink-0">
           {@error}
         </div>
 
         <%!-- Input Form --%>
-        <div class="bg-white border border-gray-200 rounded-2xl p-2 shadow-lg">
+        <div class="flex-shrink-0 bg-base-100 border border-base-300 rounded-2xl p-2">
           <.form
             for={%{}}
             phx-submit="send_message"
@@ -218,7 +215,7 @@ defmodule LidlChefWeb.ChefChatLive do
               name="chat[message]"
               value={@input}
               placeholder="Ask about recipes, ingredients, or cooking ideas..."
-              class="flex-1 px-4 py-3 border-0 focus:ring-0 text-gray-800 placeholder-gray-400"
+              class="flex-1 px-4 py-3 bg-transparent border-0 focus:ring-0 focus:outline-none text-base-content placeholder-base-content/40 text-sm"
               disabled={@loading}
               autocomplete="off"
             />
@@ -226,9 +223,9 @@ defmodule LidlChefWeb.ChefChatLive do
               type="submit"
               disabled={@loading || String.trim(@input) == ""}
               class={[
-                "px-6 py-3 rounded-xl font-medium transition-all",
-                "bg-blue-600 text-white hover:bg-blue-700",
-                "disabled:bg-gray-300 disabled:cursor-not-allowed"
+                "px-5 py-2.5 rounded-xl font-medium transition-all text-sm",
+                "bg-[#0050AA] text-white hover:bg-[#003d80]",
+                "disabled:bg-base-300 disabled:text-base-content/40 disabled:cursor-not-allowed"
               ]}
             >
               <span :if={!@loading}>Send</span>

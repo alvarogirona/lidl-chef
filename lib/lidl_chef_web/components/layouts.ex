@@ -35,40 +35,53 @@ defmodule LidlChefWeb.Layouts do
 
   def app(assigns) do
     ~H"""
-    <header class="navbar px-4 sm:px-6 lg:px-8">
-      <div class="flex-1">
-        <a href="/" class="flex-1 flex w-fit items-center gap-2">
-          <img src={~p"/images/logo.svg"} width="36" />
-          <span class="text-sm font-semibold">v{Application.spec(:phoenix, :vsn)}</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <ul class="flex flex-column px-1 space-x-4 items-center">
-          <li>
-            <a href="https://phoenixframework.org/" class="btn btn-ghost">Website</a>
-          </li>
-          <li>
-            <a href="https://github.com/phoenixframework/phoenix" class="btn btn-ghost">GitHub</a>
-          </li>
-          <li>
-            <.theme_toggle />
-          </li>
-          <li>
-            <a href="https://hexdocs.pm/phoenix/overview.html" class="btn btn-primary">
-              Get Started <span aria-hidden="true">&rarr;</span>
+    <div class="min-h-screen flex flex-col bg-base-100">
+      <%!-- Clean Modern Header --%>
+      <header class="sticky top-0 z-50 bg-base-100/80 backdrop-blur-lg border-b border-base-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between h-16">
+            <%!-- Logo & Brand --%>
+            <a href="/" class="flex items-center gap-3 group">
+              <div class="w-9 h-9 bg-[#0050AA] rounded-lg flex items-center justify-center group-hover:scale-105 transition-transform">
+                <span class="text-white text-lg">🍳</span>
+              </div>
+              <span class="font-bold text-xl text-base-content">Lidl Chef</span>
             </a>
-          </li>
-        </ul>
-      </div>
-    </header>
 
-    <main class="px-4 py-20 sm:px-6 lg:px-8">
-      <div class="mx-auto max-w-2xl space-y-4">
+            <%!-- Navigation --%>
+            <nav class="hidden md:flex items-center gap-1">
+              <.link navigate="/" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+                Home
+              </.link>
+              <.link navigate="/recipes" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+                Recipes
+              </.link>
+              <.link navigate="/chat" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+                AI Chat
+              </.link>
+              <.link navigate="/arcana" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+                Dashboard
+              </.link>
+            </nav>
+
+            <%!-- Right side actions --%>
+            <div class="flex items-center gap-3">
+              <.theme_toggle />
+              <.link navigate="/chat" class="hidden sm:flex items-center gap-2 bg-[#0050AA] hover:bg-[#003d80] text-white font-medium px-4 py-2 rounded-lg transition-all text-sm">
+                Start Cooking
+              </.link>
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <%!-- Main Content - flex-1 allows it to grow --%>
+      <main class="flex-1 flex flex-col">
         {render_slot(@inner_block)}
-      </div>
-    </main>
+      </main>
 
-    <.flash_group flash={@flash} />
+      <.flash_group flash={@flash} />
+    </div>
     """
   end
 
@@ -122,31 +135,22 @@ defmodule LidlChefWeb.Layouts do
   """
   def theme_toggle(assigns) do
     ~H"""
-    <div class="card relative flex flex-row items-center border-2 border-base-300 bg-base-300 rounded-full">
-      <div class="absolute w-1/3 h-full rounded-full border-1 border-base-200 bg-base-100 brightness-200 left-0 [[data-theme=light]_&]:left-1/3 [[data-theme=dark]_&]:left-2/3 transition-[left]" />
-
+    <div class="flex items-center bg-base-200 rounded-full p-1">
       <button
-        class="flex p-2 cursor-pointer w-1/3"
-        phx-click={JS.dispatch("phx:set-theme")}
-        data-phx-theme="system"
-      >
-        <.icon name="hero-computer-desktop-micro" class="size-4 opacity-75 hover:opacity-100" />
-      </button>
-
-      <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="p-1.5 rounded-full transition-colors [[data-theme=light]_&]:bg-base-100 [[data-theme=light]_&]:shadow-sm"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="light"
+        title="Light mode"
       >
-        <.icon name="hero-sun-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-sun-micro" class="w-4 h-4 text-base-content/70" />
       </button>
-
       <button
-        class="flex p-2 cursor-pointer w-1/3"
+        class="p-1.5 rounded-full transition-colors [[data-theme=dark]_&]:bg-base-100 [[data-theme=dark]_&]:shadow-sm"
         phx-click={JS.dispatch("phx:set-theme")}
         data-phx-theme="dark"
+        title="Dark mode"
       >
-        <.icon name="hero-moon-micro" class="size-4 opacity-75 hover:opacity-100" />
+        <.icon name="hero-moon-micro" class="w-4 h-4 text-base-content/70" />
       </button>
     </div>
     """

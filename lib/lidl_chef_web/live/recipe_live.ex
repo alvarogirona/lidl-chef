@@ -8,13 +8,29 @@ defmodule LidlChefWeb.RecipeLive do
      |> assign(:query, "")
      |> assign(:results, [])
      |> assign(:loading, false)
-     |> assign(:error, nil)}
+     |> assign(:error, nil)
+     |> assign(:search_mode, :natural)}
   end
 
   @impl true
   def handle_event("search", %{"search" => %{"query" => query}}, socket) do
-    if String.trim(query) != "" do
-      send(self(), {:perform_search, query})
+    query = String.trim(query)
+
+    if query != "" do
+      case socket.assigns.search_mode do
+        :natural ->
+          send(self(), {:perform_search, query})
+        :ingredients ->
+          ingredient_list =
+            query
+            |> String.split(",")
+            |> Enum.map(&String.trim/1)
+            |> Enum.filter(&(&1 != ""))
+
+          if length(ingredient_list) > 0 do
+            send(self(), {:perform_ingredient_search, ingredient_list})
+          end
+      end
 
       {:noreply,
        socket
@@ -31,23 +47,9 @@ defmodule LidlChefWeb.RecipeLive do
   end
 
   @impl true
-  def handle_event("ingredient_search", %{"ingredients" => ingredients}, socket) do
-    ingredient_list =
-      ingredients
-      |> String.split(",")
-      |> Enum.map(&String.trim/1)
-      |> Enum.filter(&(&1 != ""))
-
-    if length(ingredient_list) > 0 do
-      send(self(), {:perform_ingredient_search, ingredient_list})
-
-      {:noreply,
-       socket
-       |> assign(:loading, true)
-       |> assign(:error, nil)}
-    else
-      {:noreply, socket}
-    end
+  def handle_event("toggle_search_mode", _params, socket) do
+    new_mode = if socket.assigns.search_mode == :natural, do: :ingredients, else: :natural
+    {:noreply, assign(socket, :search_mode, new_mode)}
   end
 
   @impl true
@@ -92,112 +94,163 @@ defmodule LidlChefWeb.RecipeLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={%{}}>
-      <div class="max-w-6xl mx-auto p-6">
-        <div class="text-center mb-8">
-          <h1 class="text-4xl font-bold text-gray-900 mb-2">🛒 Lidl Chef</h1>
-          <p class="text-xl text-gray-600">AI-Powered Recipe Discovery System</p>
-          <p class="text-sm text-gray-500 mt-2">
-            Search through 1,500+ Lidl recipes using AI embeddings
-          </p>
-          <div class="mt-4">
-            <.link
-              navigate="/chat"
-              class="inline-flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-            >
-              👨‍🍳 Chat with AI Chef
-            </.link>
-          </div>
-        </div>
-        
-    <!-- Search Form -->
-        <div class="bg-white rounded-lg shadow-lg p-6 mb-6">
-          <.form :let={f} for={%{}} as={:search} phx-submit="search" id="search-form" class="mb-4">
-            <div class="flex gap-4">
-              <.input
-                field={f[:query]}
-                type="text"
-                placeholder="Search for recipes... (e.g., 'pasta with vegetables', 'chicken dinner')"
-                value={@query}
-                class="flex-1"
-              />
-              <button
-                type="submit"
-                class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                disabled={@loading}
-              >
-                <%= if @loading do %>
-                  🔍 Searching...
-                <% else %>
-                  🔍 Search
-                <% end %>
-              </button>
-            </div>
-          </.form>
-          
-    <!-- Ingredient Search -->
-          <div class="border-t pt-4">
-            <h3 class="text-lg font-medium mb-2">Search by Ingredients</h3>
-            <div class="flex gap-4">
-              <input
-                type="text"
-                id="ingredients-input"
-                placeholder="Enter ingredients separated by commas (e.g., chicken, tomato, onion)"
-                class="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-              />
-              <button
-                phx-click="ingredient_search"
-                phx-value-ingredients=""
-                onclick="this.setAttribute('phx-value-ingredients', document.getElementById('ingredients-input').value)"
-                class="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium transition-colors"
-                disabled={@loading}
-              >
-                🥘 Find Recipes
-              </button>
-            </div>
-          </div>
-        </div>
-        
-    <!-- Error Display -->
-        <%= if @error do %>
-          <div class="bg-red-50 border border-red-200 rounded-lg p-4 mb-6">
-            <p class="text-red-800 font-medium">Error</p>
-            <p class="text-red-600 text-sm">{@error}</p>
-          </div>
-        <% end %>
-        
-    <!-- Results -->
-        <%= if @loading do %>
-          <div class="text-center py-12">
-            <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600">
-            </div>
-            <p class="mt-4 text-gray-600">Searching recipes...</p>
-          </div>
-        <% else %>
-          <%= if length(@results) > 0 do %>
-            <div class="mb-4">
-              <h2 class="text-xl font-semibold text-gray-900">
-                Found {length(@results)} recipes
-              </h2>
+      <div class="flex-1 bg-base-100">
+        <%!-- Hero Search Section --%>
+        <div class="bg-gradient-to-b from-base-200/50 to-base-100 py-12 sm:py-16">
+          <div class="max-w-4xl mx-auto px-4 sm:px-6">
+            <div class="text-center mb-8">
+              <h1 class="text-3xl sm:text-4xl font-bold text-base-content mb-3">
+                Encuentra tu receta perfecta
+              </h1>
+              <p class="text-base-content/60 max-w-xl mx-auto">
+                Busca entre más de 1,500 recetas usando búsqueda semántica con IA
+              </p>
             </div>
 
-            <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-              <%= for result <- @results do %>
-                <div class="bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow overflow-hidden">
-                  <div class="p-6">
-                    {render_recipe(assigns, result)}
-                  </div>
+            <%!-- Search Mode Toggle --%>
+            <div class="flex items-center justify-center gap-3 mb-6">
+              <span class={[
+                "text-sm font-medium transition-colors",
+                @search_mode == :natural && "text-[#0050AA]",
+                @search_mode != :natural && "text-base-content/50"
+              ]}>
+                Búsqueda natural
+              </span>
+              <button
+                type="button"
+                phx-click="toggle_search_mode"
+                class={[
+                  "relative inline-flex h-7 w-14 items-center rounded-full transition-colors",
+                  @search_mode == :natural && "bg-[#0050AA]",
+                  @search_mode == :ingredients && "bg-[#FFF000]"
+                ]}
+              >
+                <span class={[
+                  "inline-block h-5 w-5 transform rounded-full bg-white shadow-md transition-transform",
+                  @search_mode == :natural && "translate-x-1",
+                  @search_mode == :ingredients && "translate-x-8"
+                ]} />
+              </button>
+              <span class={[
+                "text-sm font-medium transition-colors",
+                @search_mode == :ingredients && "text-[#0050AA]",
+                @search_mode != :ingredients && "text-base-content/50"
+              ]}>
+                Por ingredientes
+              </span>
+            </div>
+
+            <%!-- Main Search --%>
+            <.form for={%{}} as={:search} phx-submit="search" id="search-form">
+              <div class="relative">
+                <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <%= if @search_mode == :natural do %>
+                    <.icon name="hero-magnifying-glass" class="w-5 h-5 text-base-content/40" />
+                  <% else %>
+                    <.icon name="hero-beaker" class="w-5 h-5 text-base-content/40" />
+                  <% end %>
                 </div>
+                <input
+                  type="text"
+                  name="search[query]"
+                  value={@query}
+                  placeholder={if @search_mode == :natural, do: "Busca recetas... (ej: 'pasta con verduras', 'cena rápida con pollo')", else: "Introduce ingredientes separados por comas (ej: pollo, tomate, cebolla)"}
+                  class={[
+                    "w-full pl-12 pr-32 py-4 bg-base-100 border rounded-2xl text-base-content placeholder-base-content/40 focus:outline-none focus:ring-2 transition-all",
+                    @search_mode == :natural && "border-base-300 focus:ring-[#0050AA]/20 focus:border-[#0050AA]",
+                    @search_mode == :ingredients && "border-[#FFF000]/50 focus:ring-[#FFF000]/30 focus:border-[#FFF000]"
+                  ]}
+                />
+                <div class="absolute inset-y-0 right-2 flex items-center">
+                  <button
+                    type="submit"
+                    class={[
+                      "px-6 py-2.5 rounded-xl font-medium transition-all text-sm",
+                      @search_mode == :natural && "bg-[#0050AA] hover:bg-[#003d80] text-white",
+                      @search_mode == :ingredients && "bg-[#FFF000] hover:bg-yellow-400 text-[#0050AA]"
+                    ]}
+                    disabled={@loading}
+                  >
+                    <%= if @loading do %>
+                      Buscando...
+                    <% else %>
+                      Buscar
+                    <% end %>
+                  </button>
+                </div>
+              </div>
+            </.form>
+
+            <%!-- Helper text --%>
+            <p class="text-center text-xs text-base-content/50 mt-3">
+              <%= if @search_mode == :natural do %>
+                <.icon name="hero-sparkles" class="w-3 h-3 inline-block mr-1" />
+                Describe lo que te apetece cocinar en lenguaje natural
+              <% else %>
+                <.icon name="hero-shopping-bag" class="w-3 h-3 inline-block mr-1" />
+                Encontraremos recetas que puedas preparar con tus ingredientes
               <% end %>
+            </p>
+          </div>
+        </div>
+
+        <%!-- Results Section --%>
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+          <%!-- Error Display --%>
+          <%= if @error do %>
+            <div class="mb-6 p-4 bg-[#E60A14]/10 border border-[#E60A14]/20 rounded-xl">
+              <p class="text-[#E60A14] font-medium text-sm">{@error}</p>
+            </div>
+          <% end %>
+
+          <%!-- Loading State --%>
+          <%= if @loading do %>
+            <div class="flex flex-col items-center justify-center py-20">
+              <div class="w-12 h-12 border-4 border-[#0050AA]/20 border-t-[#0050AA] rounded-full animate-spin"></div>
+              <p class="mt-4 text-base-content/60">Buscando recetas...</p>
             </div>
           <% else %>
-            <%= unless @query == "" do %>
-              <div class="text-center py-12">
-                <p class="text-gray-500">No recipes found for "{@query}"</p>
-                <p class="text-sm text-gray-400 mt-2">Try different keywords or ingredients</p>
+            <%= if length(@results) > 0 do %>
+              <%!-- Results Header --%>
+              <div class="flex items-center justify-between mb-6">
+                <h2 class="text-lg font-semibold text-base-content">
+                  Encontradas <span class="text-[#0050AA]">{length(@results)}</span> recetas
+                </h2>
               </div>
+
+              <%!-- Results Grid --%>
+              <div class="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+                <%= for result <- @results do %>
+                  {render_recipe(assigns, result)}
+                <% end %>
+              </div>
+            <% else %>
+              <%= if @query == "" do %>
+                <%!-- Empty State --%>
+                <div class="text-center py-16">
+                  <div class="w-20 h-20 bg-base-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <.icon name="hero-magnifying-glass" class="w-10 h-10 text-base-content/30" />
+                  </div>
+                  <h3 class="text-lg font-semibold text-base-content mb-2">Empieza a buscar</h3>
+                  <p class="text-base-content/60 max-w-md mx-auto">
+                    Introduce el nombre de una receta, ingrediente o describe lo que te apetece
+                  </p>
+                </div>
+              <% else %>
+                <%!-- No Results --%>
+                <div class="text-center py-16">
+                  <div class="w-20 h-20 bg-base-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
+                    <.icon name="hero-face-frown" class="w-10 h-10 text-base-content/30" />
+                  </div>
+                  <h3 class="text-lg font-semibold text-base-content mb-2">No se encontraron recetas</h3>
+                  <p class="text-base-content/60">
+                    Prueba con otras palabras clave o revisa la ortografía
+                  </p>
+                </div>
+              <% end %>
             <% end %>
           <% end %>
-        <% end %>
+        </div>
       </div>
     </Layouts.app>
     """
@@ -209,7 +262,6 @@ defmodule LidlChefWeb.RecipeLive do
     title = extract_title(lines)
     servings = extract_servings(lines)
     ingredients = extract_ingredients(lines)
-    nutrition = extract_nutrition(lines)
     categories = extract_categories(lines)
     url = extract_url(lines)
 
@@ -218,66 +270,75 @@ defmodule LidlChefWeb.RecipeLive do
         title: title,
         servings: servings,
         ingredients: ingredients,
-        nutrition: nutrition,
         categories: categories,
         url: url,
         score: result.score || result.semantic_score
       })
 
     ~H"""
-    <div>
-      <h3 class="font-semibold text-lg text-gray-900 mb-2 line-clamp-2">
-        {@recipe_data.title}
-      </h3>
+    <article class="group bg-base-100 border border-base-200 rounded-2xl overflow-hidden hover:border-[#0050AA]/30 hover:shadow-lg transition-all">
+      <%!-- Card Header with accent --%>
+      <div class="h-2 bg-gradient-to-r from-[#0050AA] to-[#0066cc]"></div>
 
-      <div class="text-sm text-gray-600 mb-3">
-        <%= if @recipe_data.servings do %>
-          <span class="inline-block bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs mr-2">
-            🍽️ {@recipe_data.servings} servings
+      <div class="p-5">
+        <%!-- Title --%>
+        <h3 class="font-semibold text-lg text-base-content mb-3 line-clamp-2 group-hover:text-[#0050AA] transition-colors">
+          {@recipe_data.title}
+        </h3>
+
+        <%!-- Meta badges --%>
+        <div class="flex flex-wrap gap-2 mb-4">
+          <%= if @recipe_data.servings do %>
+            <span class="inline-flex items-center gap-1 bg-base-200 text-base-content/70 px-2.5 py-1 rounded-lg text-xs">
+              <.icon name="hero-users" class="w-3.5 h-3.5" />
+              {@recipe_data.servings}
+            </span>
+          <% end %>
+          <span class="inline-flex items-center gap-1 bg-[#0050AA]/10 text-[#0050AA] px-2.5 py-1 rounded-lg text-xs font-medium">
+            <.icon name="hero-sparkles" class="w-3.5 h-3.5" />
+            {Float.round(@recipe_data.score * 100, 0)}% match
           </span>
+        </div>
+
+        <%!-- Ingredients Preview --%>
+        <%= if @recipe_data.ingredients && length(@recipe_data.ingredients) > 0 do %>
+          <div class="mb-4">
+            <p class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Ingredientes</p>
+            <div class="flex flex-wrap gap-1.5">
+              <%= for ingredient <- Enum.take(@recipe_data.ingredients, 4) do %>
+                <span class="bg-base-200 text-base-content/70 px-2 py-0.5 rounded text-xs">
+                  {ingredient |> String.slice(0..20)}<%= if String.length(ingredient) > 20, do: "..." %>
+                </span>
+              <% end %>
+              <%= if length(@recipe_data.ingredients) > 4 do %>
+                <span class="bg-base-200 text-base-content/50 px-2 py-0.5 rounded text-xs">
+                  +{length(@recipe_data.ingredients) - 4} más
+                </span>
+              <% end %>
+            </div>
+          </div>
         <% end %>
 
-        <span class="inline-block bg-gray-100 text-gray-800 px-2 py-1 rounded-full text-xs">
-          🎯 Score: {Float.round(@recipe_data.score * 100, 1)}%
-        </span>
+        <%!-- Categories --%>
+        <%= if @recipe_data.categories do %>
+          <p class="text-xs text-base-content/50 mb-4 line-clamp-1">
+            {@recipe_data.categories}
+          </p>
+        <% end %>
+
+        <%!-- Action Button --%>
+        <%= if @recipe_data.url do %>
+          <a
+            href={@recipe_data.url}
+            target="_blank"
+            class="inline-flex items-center gap-2 w-full justify-center bg-[#0050AA] hover:bg-[#003d80] text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-all"
+          >
+            Ver Receta
+            <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" />
+          </a>
+        <% end %>
       </div>
-
-      <%= if @recipe_data.ingredients && length(@recipe_data.ingredients) > 0 do %>
-        <div class="mb-3">
-          <h4 class="font-medium text-sm text-gray-800 mb-1">Ingredients:</h4>
-          <ul class="text-xs text-gray-600 space-y-1">
-            <%= for ingredient <- Enum.take(@recipe_data.ingredients, 5) do %>
-              <li>{ingredient}</li>
-            <% end %>
-            <%= if length(@recipe_data.ingredients) > 5 do %>
-              <li class="text-gray-400">... and {length(@recipe_data.ingredients) - 5} more</li>
-            <% end %>
-          </ul>
-        </div>
-      <% end %>
-
-      <%= if @recipe_data.nutrition do %>
-        <div class="mb-3">
-          <p class="text-xs text-gray-600"><strong>Nutrition:</strong> {@recipe_data.nutrition}</p>
-        </div>
-      <% end %>
-
-      <%= if @recipe_data.categories do %>
-        <div class="mb-3">
-          <p class="text-xs text-gray-500"><strong>Categories:</strong> {@recipe_data.categories}</p>
-        </div>
-      <% end %>
-
-      <%= if @recipe_data.url do %>
-        <a
-          href={@recipe_data.url}
-          target="_blank"
-          class="inline-block bg-blue-600 hover:bg-blue-700 text-white text-xs px-3 py-1 rounded transition-colors"
-        >
-          View Recipe →
-        </a>
-      <% end %>
-    </div>
+    </article>
     """
   end
 
@@ -310,14 +371,6 @@ defmodule LidlChefWeb.RecipeLive do
     else
       []
     end
-  end
-
-  defp extract_nutrition(lines) do
-    Enum.find_value(lines, fn line ->
-      if String.starts_with?(line, "Nutrition: ") do
-        String.replace_prefix(line, "Nutrition: ", "")
-      end
-    end)
   end
 
   defp extract_categories(lines) do
