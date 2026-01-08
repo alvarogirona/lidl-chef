@@ -8,7 +8,7 @@ defmodule LidlChef.LLM do
 
   @base_url "http://127.0.0.1:1234"
   @model "qwen/qwen3-vl-30b"
-  @default_timeout 120_000
+  @default_timeout 300_000
 
   @doc """
   Complete a prompt using the local LM Studio LLM.
@@ -33,7 +33,9 @@ defmodule LidlChef.LLM do
 
     case Req.post("#{@base_url}/v1/chat/completions",
            json: body,
-           receive_timeout: timeout
+           receive_timeout: timeout,
+           pool_timeout: timeout,
+           connect_options: [timeout: timeout]
          ) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         response =
@@ -79,7 +81,9 @@ defmodule LidlChef.LLM do
 
     case Req.post("#{@base_url}/v1/chat/completions",
            json: body,
-           receive_timeout: timeout
+           receive_timeout: timeout,
+           pool_timeout: timeout,
+           connect_options: [timeout: timeout]
          ) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         response =
