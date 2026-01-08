@@ -120,8 +120,9 @@ defmodule LidlChef.RecipeAssistant do
       else
         cond do
           # Weekly menu queries need more recipes (7 days * 3 meals = 21)
+          # Set higher limit to account for duplicates and ensure variety
           String.contains?(lower_question, ["semanal", "semana"]) ->
-            Keyword.put(opts, :limit, 30)
+            Keyword.put(opts, :limit, 50)
 
           # Daily menu queries need recipes for 3 meals
           String.contains?(lower_question, ["diario", "día", "desayuno", "comida", "cena"]) ->
@@ -150,20 +151,23 @@ defmodule LidlChef.RecipeAssistant do
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
     use_multi_search = Keyword.get(opts, :multi_search, false)
 
-    try do
-      ctx =
-        Agent.new(question, repo: Repo, limit: limit)
-        |> Agent.rewrite()
-        |> Agent.expand()
+    Logger.debug("agentic_ask called with: limit=#{limit}, self_correct=#{self_correct}, skip_rerank=#{skip_rerank}, multi_search=#{use_multi_search}")
+    Logger.debug("Original question: #{question}")
 
-      # For menu queries, use multi-search to gather more diverse recipes
+    try do
+      # For menu queries with multi-search, skip rewrite/expand and do multi-search directly
+      # because rewrite/expand can mangle multi-day menu requests
       ctx =
         if use_multi_search do
-          multi_search_for_menus(ctx, question, limit)
+          ctx = Agent.new(question, repo: Repo, limit: 50)
+          # Store the original question before any transformations
+          ctx = %{ctx | question: question}
+          multi_search_for_menus(ctx, question, 50)
         else
-          # TODO: is the limit and graph parameters used here? I was checking the source code and it does not
-          # seem to be used
-          Agent.search(ctx, collection: Recipes.collection_name(), graph: false)
+          Agent.new(question, repo: Repo, limit: limit)
+          |> Agent.rewrite()
+          |> Agent.expand()
+          |> Agent.search(collection: Recipes.collection_name(), graph: false)
         end
 
       # Skip reranking for menu queries - it processes each chunk individually with LLM
@@ -175,12 +179,34 @@ defmodule LidlChef.RecipeAssistant do
           Agent.rerank(ctx, threshold: 3)
         end
 
+      # Debug: Check how many chunks we have before answer phase
+      if Logger.level() == :debug do
+        case ctx.results do
+          [%{chunks: chunks} | _] ->
+            Logger.debug("Before answer phase: #{length(chunks)} chunks in ctx.results")
+            # Log unique document IDs to verify variety
+            unique_docs = chunks |> Enum.map(& &1.document_id) |> Enum.uniq() |> length()
+            Logger.debug("  → #{unique_docs} unique document_ids")
+          _ ->
+            Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
+        end
+      end
+
       ctx =
         Agent.answer(ctx,
           repo: Repo,
           prompt: &build_agentic_prompt/2,
           self_correct: self_correct
         )
+
+      # Debug: Check after answer
+      if Logger.level() == :debug do
+        if ctx.answer do
+          Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
+        else
+          Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
+        end
+      end
 
       case ctx.answer do
         nil -> {:error, {:no_answer, "Agent did not generate an answer"}}
@@ -201,22 +227,35 @@ defmodule LidlChef.RecipeAssistant do
     # Define search queries for different meal types and variety
     search_queries = build_menu_search_queries(lower_question, dietary_filter)
 
+    Logger.debug("Multi-search: Running #{length(search_queries)} queries...")
+
     # Perform multiple searches and collect unique chunks
-    limit_per_query = max(div(target_limit, length(search_queries)) + 2, 5)
+    # Adjust limit per query based on target - fewer chunks per query to encourage diversity
+    limit_per_query = max(div(target_limit, length(search_queries)), 5)
+
+    Logger.debug("Fetching #{limit_per_query} chunks per query (#{length(search_queries)} queries total)")
 
     all_chunks =
       search_queries
-      |> Enum.flat_map(fn query ->
-        search_single(query, limit_per_query)
+      |> Enum.with_index(1)
+      |> Enum.flat_map(fn {query, idx} ->
+        chunks = search_single(query, limit_per_query)
+        Logger.debug("  #{idx}/#{length(search_queries)}: \"#{String.slice(query, 0, 35)}\" -> #{length(chunks)}")
+        chunks
       end)
       |> deduplicate_chunks()
-      # Take more than needed to ensure variety
+      # Take more than target to ensure variety after deduplication
       |> Enum.take(target_limit * 2)
 
-    Logger.debug("Multi-search collected #{length(all_chunks)} unique chunks for menu query")
+    Logger.debug("Multi-search: Total #{length(all_chunks)} unique chunks (target #{target_limit})")
+
+    # Debug: Log a sample of chunk texts to verify they contain recipe data
+    if Logger.level() == :debug and length(all_chunks) > 0 do
+      Logger.debug("Sample chunk preview: #{String.slice(hd(all_chunks).text, 0, 150)}...")
+    end
 
     # Update context with combined results - matching the exact structure Arcana expects
-    %{
+    updated_ctx = %{
       ctx
       | results: [
           %{
@@ -227,6 +266,17 @@ defmodule LidlChef.RecipeAssistant do
           }
         ]
     }
+
+    # Debug: Verify chunks are in results
+    if Logger.level() == :debug do
+      result_chunks = case updated_ctx.results do
+        [%{chunks: chunks} | _] -> length(chunks)
+        _ -> 0
+      end
+      Logger.debug("After multi_search_for_menus: ctx.results has #{result_chunks} chunks")
+    end
+
+    updated_ctx
   end
 
   defp extract_dietary_filter(question) do
@@ -425,6 +475,38 @@ defmodule LidlChef.RecipeAssistant do
   defp build_agentic_prompt(question, chunks) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
 
+    # Debug: Log prompt size and chunk count
+    if Logger.level() == :debug do
+      Logger.debug("Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material")
+      # Count total recipes in reference material
+      recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
+      Logger.debug("  → Recipe entries found in context: #{recipe_count}")
+      # Log first few URLs found in the reference material
+      urls = Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
+        |> Enum.map(&hd/1)
+        |> Enum.uniq()
+      Logger.debug("  → #{length(urls)} unique URLs in context")
+      Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
+    end
+
+    # Check if this is a menu planning request
+    is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
+
+    menu_instructions = if is_menu_request do
+      """
+
+      ⚠️ IMPORTANTE PARA MENÚS:
+      - El usuario ha solicitado un MENÚ, NO recetas individuales
+      - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
+      - DEBES organizar estas recetas en un menú estructurado
+      - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
+      - Puedes y DEBES usar las recetas del contexto para crear el menú completo
+      - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
+      """
+    else
+      ""
+    end
+
     """
     #{@agentic_system_prompt}
 
@@ -433,7 +515,7 @@ defmodule LidlChef.RecipeAssistant do
     ===== FIN DEL CONTEXTO =====
 
     PREGUNTA DEL USUARIO: "#{question}"
-
+    #{menu_instructions}
     RECUERDA:
     - SOLO recomienda recetas que aparezcan en el CONTEXTO anterior
     - Copia los nombres de recetas y URLs EXACTAMENTE como aparecen
