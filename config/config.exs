@@ -7,7 +7,9 @@
 # General application configuration
 import Config
 
-config :lidl_chef, LidlChef.Repo, types: LidlChef.PostgrexTypes
+config :lidl_chef, LidlChef.Repo,
+  types: LidlChef.PostgrexTypes,
+  log: false
 
 config :lidl_chef,
   ecto_repos: [LidlChef.Repo],
@@ -81,7 +83,8 @@ config :arcana,
   chunker: :default,
   llm: &LidlChef.LLM.complete/1,
   graph: [
-    enabled: false,  # Disable GraphRAG for now
+    # Disable GraphRAG for now
+    enabled: false,
     community_levels: 5,
     resolution: 1.0,
     extractor: Arcana.Graph.GraphExtractor.LLM
