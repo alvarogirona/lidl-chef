@@ -122,7 +122,7 @@ defmodule LidlChef.RecipeAssistant do
     {:ok, intent_info} = IntentClassifier.classify(question)
 
     Logger.debug(
-      "Intent classified: #{intent_info.intent} (confidence: #{intent_info.confidence})"
+      "Intent classified: #{intent_info.intent})"
     )
 
     Logger.debug("  Ingredients: #{inspect(intent_info.ingredients)}")
