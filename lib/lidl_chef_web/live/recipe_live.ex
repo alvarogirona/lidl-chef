@@ -66,7 +66,7 @@ defmodule LidlChefWeb.RecipeLive do
   @impl true
   def handle_info({:perform_ingredient_search, ingredients}, socket) do
     try do
-      {:ok, results} = LidlChef.Recipes.find_by_ingredients(ingredients, graph: false, limit: 10)
+      {:ok, results} = LidlChef.Recipes.find_by_ingredients(ingredients, graph: false, limit: 20)
 
       {:noreply,
        socket
