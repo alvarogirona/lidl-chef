@@ -202,20 +202,20 @@ defmodule LidlChefWeb.ChefChatLive do
         </div>
 
         <%!-- Input Form --%>
-        <div class="flex-shrink-0 bg-base-100 border border-base-300 rounded-2xl p-2">
+        <div class="flex-shrink-0">
           <.form
             for={%{}}
             phx-submit="send_message"
             phx-change="update_input"
             id="chat-form"
-            class="flex gap-2"
+            class="flex gap-3 p-4 bg-base-200/50 backdrop-blur-sm border border-base-300 rounded-2xl shadow-sm"
           >
             <input
               type="text"
               name="chat[message]"
               value={@input}
-              placeholder="Ask about recipes, ingredients, or cooking ideas..."
-              class="flex-1 px-4 py-3 bg-transparent border-0 focus:ring-0 focus:outline-none text-base-content placeholder-base-content/40 text-sm"
+              placeholder="Pregúntame sobre recetas, ingredientes o ideas de cocina..."
+              class="flex-1 px-4 py-3 bg-base-100 border border-base-300 rounded-xl text-base-content placeholder-base-content/50 text-sm focus:outline-none focus:ring-2 focus:ring-[#0050AA]/20 focus:border-[#0050AA] transition-all shadow-sm"
               disabled={@loading}
               autocomplete="off"
             />
@@ -223,13 +223,19 @@ defmodule LidlChefWeb.ChefChatLive do
               type="submit"
               disabled={@loading || String.trim(@input) == ""}
               class={[
-                "px-5 py-2.5 rounded-xl font-medium transition-all text-sm",
-                "bg-[#0050AA] text-white hover:bg-[#003d80]",
-                "disabled:bg-base-300 disabled:text-base-content/40 disabled:cursor-not-allowed"
+                "px-6 py-3 rounded-xl font-medium transition-all text-sm shadow-sm",
+                "bg-[#0050AA] text-white hover:bg-[#003d80] hover:shadow-lg hover:scale-105",
+                "disabled:bg-base-300 disabled:text-base-content/40 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none"
               ]}
             >
-              <span :if={!@loading}>Send</span>
-              <span :if={@loading}>...</span>
+              <span :if={!@loading} class="flex items-center gap-2">
+                <.icon name="hero-paper-airplane" class="w-4 h-4" />
+                Enviar
+              </span>
+              <span :if={@loading} class="flex items-center gap-2">
+                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                Enviando...
+              </span>
             </button>
           </.form>
         </div>
@@ -244,49 +250,49 @@ defmodule LidlChefWeb.ChefChatLive do
     # Format recipe titles (lines starting with "Recipe:" or numbered recipes)
     |> String.replace(~r/^Recipe:\s*(.+)$/m, "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>")
     |> String.replace(~r/^(\d+\.\s*.+)$/m, "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>")
-    
+
     # Format ingredients sections
     |> String.replace(~r/^(Ingredientes?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>")
     |> String.replace(~r/^(Ingredients?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>")
-    
-    # Format instructions sections  
+
+    # Format instructions sections
     |> String.replace(~r/^(Instrucciones?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>")
     |> String.replace(~r/^(Instructions?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>")
-    
+
     # Format time and servings info
     |> String.replace(~r/^(Tiempo de preparación:|Prep time:|Tiempo de cocción:|Cook time:|Porciones:|Servings?:)\s*(.+)$/m, "<div class=\"inline-flex items-center gap-2 bg-[#FFF000]/20 text-[#0050AA] px-3 py-1 rounded-full text-sm font-medium my-1 mr-2\"><span class=\"text-xs\">⏱️</span><strong>\\1</strong> \\2</div>")
-    
+
     # Enhanced list formatting for ingredients and steps
     |> String.replace(~r/^-\s(.+)$/m, "<li class=\"flex items-start gap-2 py-1\"><span class=\"text-[#0050AA] font-bold mt-0.5\">•</span><span>\\1</span></li>")
-    
+
     # Standard markdown formatting
     |> String.replace(~r/\*\*(.+?)\*\*/, "<strong class=\"font-bold text-base-content\">\\1</strong>")
     |> String.replace(~r/\*(.+?)\*/, "<em class=\"italic\">\\1</em>")
-    
+
     # Enhanced link formatting
     |> String.replace(
       ~r/\[([^\]]+)\]\(([^)]+)\)/,
       "<a href=\"\\2\" target=\"_blank\" class=\"text-[#0050AA] hover:text-[#003d80] underline font-medium inline-flex items-center gap-1\">\\1 <span class=\"text-xs\">🔗</span></a>"
     )
-    
+
     # Headers with better styling
     |> String.replace(~r/^### (.+)$/m, "<h3 class=\"font-bold text-lg mt-4 mb-2 text-base-content border-b border-base-200 pb-1\">\\1</h3>")
     |> String.replace(~r/^## (.+)$/m, "<h2 class=\"font-bold text-xl mt-4 mb-2 text-base-content\">\\1</h2>")
     |> String.replace(~r/^# (.+)$/m, "<h1 class=\"font-bold text-2xl mt-4 mb-2 text-base-content\">\\1</h1>")
-    
+
     # Wrap consecutive list items in proper ul tags
     |> String.replace(~r/(<li.*?<\/li>[\s\n]*)+/s, "<ul class=\"space-y-1 my-3 ml-2\">\\0</ul>")
-    
+
     # Convert plain URLs (not already in HTML)
     |> String.replace(
       ~r/(?<!href=")(?<!">)(https?:\/\/[^\s<)"]+)(?![^<]*<\/a>)/,
       "<a href=\"\\1\" target=\"_blank\" class=\"text-[#0050AA] hover:text-[#003d80] underline break-all\">\\1</a>"
     )
-    
+
     # Paragraph handling - preserve line breaks and add spacing
     |> String.replace(~r/\n\n/, "</p><p class=\"my-2\">")
     |> then(&"<p class=\"my-2\">#{&1}</p>")
-    
+
     # Clean up empty paragraphs and improve spacing
     |> String.replace(~r/<p class="my-2"><\/p>/, "")
     |> String.replace(~r/<p class="my-2">\s*<\/p>/, "")
