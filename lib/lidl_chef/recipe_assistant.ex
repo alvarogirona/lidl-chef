@@ -269,7 +269,7 @@ defmodule LidlChef.RecipeAssistant do
         reranker: LidlChef.Reranker,
         threshold: 2,
         concurrency: reranker_concurrency,
-        base_url: "http://127.0.0.1:8081"
+        base_url: "http://127.0.0.1:1234"
       )
 
   # Build optimized search query from extracted ingredients
