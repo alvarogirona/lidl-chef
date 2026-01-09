@@ -106,11 +106,15 @@ defmodule LidlChef.RecipeAssistant do
     * `:simple` - Use simple RAG instead of agentic pipeline (default: false)
     * `:limit` - Number of recipes to retrieve (default: 5)
     * `:self_correct` - Enable answer self-correction (default: true)
+    * `:reranker_concurrency` - Max parallel requests for reranking (default: 10)
 
   ## Examples
 
       iex> LidlChef.RecipeAssistant.ask("What can I make with chicken and rice?")
       {:ok, "Based on the recipes available, here are some options..."}
+
+      iex> LidlChef.RecipeAssistant.ask("Quick dinner ideas", reranker_concurrency: 20)
+      {:ok, "Here are some quick dinner recipes..."}
 
   """
   @spec ask(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
@@ -183,6 +187,7 @@ defmodule LidlChef.RecipeAssistant do
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
     skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
     use_multi_search = Keyword.get(opts, :multi_search, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
 
     Logger.debug(
       "agentic_ask: limit=#{limit}, skip_rewrite=#{skip_rewrite}, skip_rerank=#{skip_rerank}, multi_search=#{use_multi_search}"
@@ -218,14 +223,7 @@ defmodule LidlChef.RecipeAssistant do
             |> Agent.search(collection: Recipes.collection_name(), graph: false)
         end
 
-      # Skip reranking for menu queries - it processes each chunk individually with LLM
-      # which filters out recipes before the LLM can see them all together
-      ctx =
-        if skip_rerank do
-          ctx
-        else
-          Agent.rerank(ctx, reranker: LidlChef.Reranker, threshold: 2)
-        end
+      ctx = maybe_rerank?(ctx, reranker_concurrency, !skip_rerank)
 
       if Logger.level() == :debug do
         case ctx.results do
@@ -248,12 +246,10 @@ defmodule LidlChef.RecipeAssistant do
           self_correct: self_correct
         )
 
-      if Logger.level() == :debug do
-        if ctx.answer do
-          Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
-        else
-          Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
-        end
+      if ctx.answer do
+        Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
+      else
+        Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
       end
 
       case ctx.answer do
@@ -264,6 +260,17 @@ defmodule LidlChef.RecipeAssistant do
       e -> {:error, {:agent_error, Exception.message(e)}}
     end
   end
+
+  defp maybe_rerank?(ctx, _, false), do: ctx
+
+  defp maybe_rerank?(ctx, reranker_concurrency, true),
+    do:
+      Agent.rerank(ctx,
+        reranker: LidlChef.Reranker,
+        threshold: 2,
+        concurrency: reranker_concurrency,
+        base_url: "http://127.0.0.1:8081"
+      )
 
   # Build optimized search query from extracted ingredients
   defp build_ingredient_search_query(intent_info) do
@@ -289,6 +296,7 @@ defmodule LidlChef.RecipeAssistant do
     case Recipes.search(search_query, limit: limit, graph: false, mode: :hybrid) do
       {:ok, [_ | _] = chunks} ->
         Logger.debug("Ingredient search found #{length(chunks)} chunks")
+
         %{
           ctx
           | question: original_question,
@@ -335,7 +343,7 @@ defmodule LidlChef.RecipeAssistant do
 
     Logger.debug("Multi-search: Running #{length(search_queries)} queries...")
 
-    limit_per_query = max(div(target_limit, length(search_queries)), 5)
+    limit_per_query = 10
 
     Logger.debug(
       "Fetching #{limit_per_query} chunks per query (#{length(search_queries)} queries total)"
@@ -354,8 +362,7 @@ defmodule LidlChef.RecipeAssistant do
         chunks
       end)
       |> deduplicate_chunks()
-      # Take more than target to ensure variety after deduplication
-      |> Enum.take(target_limit * 2)
+      |> Enum.take(target_limit)
 
     Logger.debug(
       "Multi-search: Total #{length(all_chunks)} unique chunks (target #{target_limit})"
@@ -366,7 +373,6 @@ defmodule LidlChef.RecipeAssistant do
       Logger.debug("Sample chunk preview: #{String.slice(hd(all_chunks).text, 0, 150)}...")
     end
 
-    # Update context with combined results - matching the exact structure Arcana expects
     updated_ctx = %{
       ctx
       | results: [
@@ -420,6 +426,7 @@ defmodule LidlChef.RecipeAssistant do
       "snack merienda tentempié"
     ]
 
+    # TODO: add time queries when the recipe description is ingested
     time_queries = [
       "rápido fácil 30 minutos",
       "lento guiso cocción"
@@ -448,7 +455,7 @@ defmodule LidlChef.RecipeAssistant do
       |> Enum.take(5)
       |> Enum.join(" ")
 
-    all_queries = queries ++ time_queries ++ ingredient_queries
+    all_queries = queries ++ ingredient_queries
 
     if original_terms != "" do
       [original_terms | all_queries]
@@ -461,14 +468,12 @@ defmodule LidlChef.RecipeAssistant do
     cache_key = {:recipe_search, query, limit}
     ttl = :timer.hours(2)
 
-    case Cachex.fetch(:recipe_search_cache, cache_key,
-           fn _key ->
-             case Recipes.search(query, limit: limit, graph: false, mode: :hybrid) do
-               {:ok, chunks} -> {:commit, chunks, ttl: ttl}
-               _ -> {:ignore, []}
-             end
+    case Cachex.fetch(:recipe_search_cache, cache_key, fn _key ->
+           case Recipes.search(query, limit: limit, graph: false, mode: :hybrid) do
+             {:ok, chunks} -> {:commit, chunks, ttl: ttl}
+             _ -> {:ignore, []}
            end
-         ) do
+         end) do
       {:ok, chunks} -> chunks
       {:commit, chunks} -> chunks
       _ -> []
@@ -721,6 +726,7 @@ defmodule LidlChef.RecipeAssistant do
 
       recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
       Logger.debug("  → Recipe entries found in context: #{recipe_count}")
+
       urls =
         Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
         |> Enum.map(&hd/1)

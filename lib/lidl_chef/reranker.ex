@@ -4,15 +4,31 @@ defmodule LidlChef.Reranker do
 
   This reranker uses a lightweight model specifically optimized for reranking tasks,
   with a custom prompt designed for recipe ranking based on ingredients and user preferences.
+
+  ## Options
+
+  - `:threshold` - Minimum score for a chunk to be included (default: 5)
+  - `:concurrency` - Max parallel requests to LLM server (default: 10)
+  - `:base_url` - Base URL for the LLM server (default: "http://127.0.0.1:8080")
   """
 
   @behaviour Arcana.Agent.Reranker
   require Logger
 
   @model "qwen3-reranker-0.6b"
-  @base_url "http://127.0.0.1:1234"
+  @base_url "http://127.0.0.1:8080"
   @default_threshold 5
-  @default_timeout 120_000
+  @default_timeout :infinity
+
+  # Req configuration for HTTP requests
+  # Req automatically handles connection pooling internally
+  defp req_client(base_url \\ @base_url) do
+    Req.new(
+      base_url: base_url,
+      receive_timeout: @default_timeout,
+      retry: false
+    )
+  end
 
   # Qwen3 reranker models use chain-of-thought reasoning
   # The model thinks in reasoning_content and outputs final answer in content
@@ -45,22 +61,43 @@ defmodule LidlChef.Reranker do
 
   def rerank(question, chunks, opts) do
     threshold = Keyword.get(opts, :threshold, @default_threshold)
+    concurrency = Keyword.get(opts, :concurrency, 10)
+    base_url = Keyword.get(opts, :base_url, @base_url)
 
-    Logger.info("[Reranker] Received #{length(chunks)} chunks to rerank")
+    Logger.info("[Reranker] Received #{length(chunks)} chunks to rerank (concurrency: #{concurrency}, base_url: #{base_url})")
+
+    start_time = System.monotonic_time(:millisecond)
 
     scored_chunks =
       chunks
-      |> Enum.map(fn chunk ->
-        prompt = build_prompt(question, chunk.text)
-        Logger.info("[Reranker] Generated prompt:\n#{prompt}")
-
-        score = get_score(prompt)
-        Logger.info("[Reranker] Score for chunk: #{score}")
-        {chunk, score}
+      |> Task.async_stream(
+        fn chunk ->
+          request_start = System.monotonic_time(:millisecond)
+          prompt = build_prompt(question, chunk.text)
+          score = get_score(prompt, base_url)
+          request_duration = System.monotonic_time(:millisecond) - request_start
+          Logger.debug("[Reranker] Score #{score} (#{request_duration}ms)")
+          {chunk, score}
+        end,
+        max_concurrency: concurrency,
+        timeout: @default_timeout,
+        ordered: false
+      )
+      |> Enum.reduce([], fn
+        {:ok, result}, acc -> [result | acc]
+        {:exit, reason}, acc ->
+          Logger.error("[Reranker] Task failed: #{inspect(reason)}")
+          acc
       end)
       |> Enum.filter(fn {_chunk, score} -> score >= threshold end)
       |> Enum.sort_by(fn {_chunk, score} -> score end, :desc)
       |> Enum.map(fn {chunk, _score} -> chunk end)
+
+    total_duration = System.monotonic_time(:millisecond) - start_time
+
+    Logger.info(
+      "[Reranker] Returned #{length(scored_chunks)} chunks after reranking (total: #{total_duration}ms)"
+    )
 
     {:ok, scored_chunks}
   end
@@ -71,7 +108,7 @@ defmodule LidlChef.Reranker do
     |> String.replace("{chunk_text}", chunk_text)
   end
 
-  defp get_score(prompt) do
+  defp get_score(prompt, base_url \\ @base_url) do
     body = %{
       model: @model,
       messages: [
@@ -81,14 +118,8 @@ defmodule LidlChef.Reranker do
       max_tokens: 500
     }
 
-    case Req.post("#{@base_url}/v1/chat/completions",
-           json: body,
-           receive_timeout: @default_timeout,
-           pool_timeout: @default_timeout,
-           connect_options: [timeout: @default_timeout]
-         ) do
+    case Req.post(req_client(base_url), url: "/v1/chat/completions", json: body) do
       {:ok, %Req.Response{status: 200, body: response_body}} ->
-        Logger.info("[Reranker] LLM response: #{inspect(response_body)}")
         parse_reranker_response(response_body)
 
       {:ok, %Req.Response{status: status, body: error_body}} ->
