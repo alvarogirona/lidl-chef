@@ -160,7 +160,17 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     - SOLO recomienda recetas del CONTEXTO - NO inventes recetas
     - Copia el nombre EXACTO y la URL EXACTA de cada receta
     - Si una receta usa al menos 1 ingrediente del usuario, es válida
-    - Formatea así: "**[Nombre de Receta]** ([URL]) - Usa: [ingredientes que tiene el usuario]"
+
+    FORMATO REQUERIDO PARA CADA RECETA RECOMENDADA:
+    ## [Nombre Exacto de la Receta] SIN LA URL QUE VA DESPUÉS
+    - **Ingredientes que tienes:** [lista los ingredientes disponibles del usuario que se usan]
+    - **Ingredientes adicionales:** [lista los que necesita comprar, si los hay]
+    - **Tiempo aprox:** [si está disponible en el contexto]
+    - **Porciones:** [si está disponible en el contexto]
+    - **Informacion nutricional:** [si está disponible en el contexto]
+    - [Breve descripción atractiva de la receta y por qué es perfecta para el usuario]
+    - 🛒 **Lista de compras:** [solo si faltan ingredientes]
+    🔗 **Ver receta completa:** [URL EXACTA del contexto
 
     ===== CONTEXTO (Recetas disponibles) =====
     #{reference_material}

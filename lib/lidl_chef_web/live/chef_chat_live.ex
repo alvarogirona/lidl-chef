@@ -128,7 +128,9 @@ defmodule LidlChefWeb.ChefChatLive do
                 phx-value-message="Quiero que me sugieras un menú diario (desayuno, comida y cena) vegano. ¿Qué recetas me recomiendas?"
                 class="p-3 bg-base-200 border border-base-300 rounded-xl hover:border-[#FFF000]/50 hover:bg-base-100 transition-all text-left text-sm"
               >
-                <span class="text-base-content/80">"Quiero que me sugieras un menú diario vegano"</span>
+                <span class="text-base-content/80">
+                  "Quiero que me sugieras un menú diario vegano"
+                </span>
               </button>
               <button
                 phx-click="send_suggestion"
@@ -172,7 +174,10 @@ defmodule LidlChefWeb.ChefChatLive do
               message.role == :user && "bg-[#0050AA] text-white",
               message.role == :assistant && "bg-base-200 text-base-content"
             ]}>
-              <div :if={message.role == :assistant} class="prose prose-sm max-w-none dark:prose-invert [&_ul]:list-none [&_li]:pl-0">
+              <div
+                :if={message.role == :assistant}
+                class="prose prose-sm max-w-none dark:prose-invert [&_ul]:list-none [&_li]:pl-0"
+              >
                 {raw(format_markdown(message.content))}
               </div>
               <div :if={message.role == :user}>
@@ -197,7 +202,10 @@ defmodule LidlChefWeb.ChefChatLive do
         </div>
 
         <%!-- Error message --%>
-        <div :if={@error} class="mb-4 p-3 bg-[#E60A14]/10 border border-[#E60A14]/20 rounded-xl text-[#E60A14] text-sm flex-shrink-0">
+        <div
+          :if={@error}
+          class="mb-4 p-3 bg-[#E60A14]/10 border border-[#E60A14]/20 rounded-xl text-[#E60A14] text-sm flex-shrink-0"
+        >
           {@error}
         </div>
 
@@ -229,11 +237,11 @@ defmodule LidlChefWeb.ChefChatLive do
               ]}
             >
               <span :if={!@loading} class="flex items-center gap-2">
-                <.icon name="hero-paper-airplane" class="w-4 h-4" />
-                Enviar
+                <.icon name="hero-paper-airplane" class="w-4 h-4" /> Enviar
               </span>
               <span :if={@loading} class="flex items-center gap-2">
-                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                <div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin">
+                </div>
                 Enviando...
               </span>
             </button>
@@ -248,25 +256,52 @@ defmodule LidlChefWeb.ChefChatLive do
   defp format_markdown(text) do
     text
     # Format recipe titles (lines starting with "Recipe:" or numbered recipes)
-    |> String.replace(~r/^Recipe:\s*(.+)$/m, "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>")
-    |> String.replace(~r/^(\d+\.\s*.+)$/m, "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>")
+    |> String.replace(
+      ~r/^Recipe:\s*(.+)$/m,
+      "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>"
+    )
+    |> String.replace(
+      ~r/^(\d+\.\s*.+)$/m,
+      "<div class=\"bg-[#0050AA]/5 border-l-4 border-[#0050AA] p-3 my-3 rounded-r-lg\"><h3 class=\"font-bold text-lg text-[#0050AA] mb-1\">🍽️ \\1</h3></div>"
+    )
 
     # Format ingredients sections
-    |> String.replace(~r/^(Ingredientes?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>")
-    |> String.replace(~r/^(Ingredients?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>")
+    |> String.replace(
+      ~r/^(Ingredientes?:)$/m,
+      "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>"
+    )
+    |> String.replace(
+      ~r/^(Ingredients?:)$/m,
+      "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">🧄 \\1</h4>"
+    )
 
     # Format instructions sections
-    |> String.replace(~r/^(Instrucciones?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>")
-    |> String.replace(~r/^(Instructions?:)$/m, "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>")
+    |> String.replace(
+      ~r/^(Instrucciones?:)$/m,
+      "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>"
+    )
+    |> String.replace(
+      ~r/^(Instructions?:)$/m,
+      "<h4 class=\"font-semibold text-[#FFF000] bg-[#0050AA] px-3 py-1 rounded text-sm inline-block mt-3 mb-2\">👨‍🍳 \\1</h4>"
+    )
 
     # Format time and servings info
-    |> String.replace(~r/^(Tiempo de preparación:|Prep time:|Tiempo de cocción:|Cook time:|Porciones:|Servings?:)\s*(.+)$/m, "<div class=\"inline-flex items-center gap-2 bg-[#FFF000]/20 text-[#0050AA] px-3 py-1 rounded-full text-sm font-medium my-1 mr-2\"><span class=\"text-xs\">⏱️</span><strong>\\1</strong> \\2</div>")
+    |> String.replace(
+      ~r/^(Tiempo de preparación:|Prep time:|Tiempo de cocción:|Cook time:|Porciones:|Servings?:)\s*(.+)$/m,
+      "<div class=\"inline-flex items-center gap-2 bg-[#FFF000]/20 text-[#0050AA] px-3 py-1 rounded-full text-sm font-medium my-1 mr-2\"><span class=\"text-xs\">⏱️</span><strong>\\1</strong> \\2</div>"
+    )
 
     # Enhanced list formatting for ingredients and steps
-    |> String.replace(~r/^-\s(.+)$/m, "<li class=\"flex items-start gap-2 py-1\"><span class=\"text-[#0050AA] font-bold mt-0.5\">•</span><span>\\1</span></li>")
+    |> String.replace(
+      ~r/^-\s(.+)$/m,
+      "<li class=\"flex items-start gap-2 py-1\"><span class=\"text-[#0050AA] font-bold mt-0.5\">•</span><span>\\1</span></li>"
+    )
 
     # Standard markdown formatting
-    |> String.replace(~r/\*\*(.+?)\*\*/, "<strong class=\"font-bold text-base-content\">\\1</strong>")
+    |> String.replace(
+      ~r/\*\*(.+?)\*\*/,
+      "<strong class=\"font-bold text-base-content\">\\1</strong>"
+    )
     |> String.replace(~r/\*(.+?)\*/, "<em class=\"italic\">\\1</em>")
 
     # Enhanced link formatting
@@ -276,9 +311,18 @@ defmodule LidlChefWeb.ChefChatLive do
     )
 
     # Headers with better styling
-    |> String.replace(~r/^### (.+)$/m, "<h3 class=\"font-bold text-lg mt-4 mb-2 text-base-content border-b border-base-200 pb-1\">\\1</h3>")
-    |> String.replace(~r/^## (.+)$/m, "<h2 class=\"font-bold text-xl mt-4 mb-2 text-base-content\">\\1</h2>")
-    |> String.replace(~r/^# (.+)$/m, "<h1 class=\"font-bold text-2xl mt-4 mb-2 text-base-content\">\\1</h1>")
+    |> String.replace(
+      ~r/^### (.+)$/m,
+      "<h3 class=\"font-bold text-lg mt-4 mb-2 text-base-content border-b border-base-200 pb-1\">\\1</h3>"
+    )
+    |> String.replace(
+      ~r/^## (.+)$/m,
+      "<h2 class=\"font-bold text-xl mt-4 mb-2 text-base-content\">\\1</h2>"
+    )
+    |> String.replace(
+      ~r/^# (.+)$/m,
+      "<h1 class=\"font-bold text-2xl mt-4 mb-2 text-base-content\">\\1</h1>"
+    )
 
     # Wrap consecutive list items in proper ul tags
     |> String.replace(~r/(<li.*?<\/li>[\s\n]*)+/s, "<ul class=\"space-y-1 my-3 ml-2\">\\0</ul>")

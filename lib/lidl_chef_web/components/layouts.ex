@@ -50,16 +50,28 @@ defmodule LidlChefWeb.Layouts do
 
             <%!-- Navigation --%>
             <nav class="hidden md:flex items-center gap-1">
-              <.link navigate="/" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+              <.link
+                navigate="/"
+                class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
+              >
                 Home
               </.link>
-              <.link navigate="/recipes" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+              <.link
+                navigate="/recipes"
+                class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
+              >
                 Recipes
               </.link>
-              <.link navigate="/chat" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+              <.link
+                navigate="/chat"
+                class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
+              >
                 AI Chat
               </.link>
-              <.link navigate="/arcana" class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium">
+              <.link
+                navigate="/arcana"
+                class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
+              >
                 Dashboard
               </.link>
             </nav>
@@ -67,7 +79,10 @@ defmodule LidlChefWeb.Layouts do
             <%!-- Right side actions --%>
             <div class="flex items-center gap-3">
               <.theme_toggle />
-              <.link navigate="/chat" class="hidden sm:flex items-center gap-2 bg-[#0050AA] hover:bg-[#003d80] text-white font-medium px-4 py-2 rounded-lg transition-all text-sm">
+              <.link
+                navigate="/chat"
+                class="hidden sm:flex items-center gap-2 bg-[#0050AA] hover:bg-[#003d80] text-white font-medium px-4 py-2 rounded-lg transition-all text-sm"
+              >
                 Start Cooking
               </.link>
             </div>

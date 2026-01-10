@@ -9,35 +9,39 @@
             <span class="w-2 h-2 bg-[#0050AA] rounded-full animate-pulse"></span>
             AI-Powered Recipe Discovery
           </div>
-          
+
           <%!-- Main heading --%>
           <h1 class="text-4xl sm:text-5xl lg:text-6xl font-bold text-base-content mb-6 tracking-tight">
-            Find your next
-            <span class="text-[#0050AA]">favorite recipe</span>
+            Find your next <span class="text-[#0050AA]">favorite recipe</span>
           </h1>
-          
+
           <p class="text-lg sm:text-xl text-base-content/60 mb-10 max-w-2xl mx-auto leading-relaxed">
-            Search through 1,500+ curated recipes from Lidl. Tell us what's in your fridge, 
+            Search through 1,500+ curated recipes from Lidl. Tell us what's in your fridge,
             and our AI will suggest the perfect meal for you.
           </p>
-          
+
           <%!-- CTA Buttons --%>
           <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <.link navigate="/chat" class="inline-flex items-center justify-center gap-2 bg-[#0050AA] hover:bg-[#003d80] text-white font-semibold px-8 py-4 rounded-xl transition-all hover:shadow-lg hover:shadow-[#0050AA]/25">
-              <.icon name="hero-chat-bubble-left-right-solid" class="w-5 h-5" />
-              Chat with AI Chef
+            <.link
+              navigate="/chat"
+              class="inline-flex items-center justify-center gap-2 bg-[#0050AA] hover:bg-[#003d80] text-white font-semibold px-8 py-4 rounded-xl transition-all hover:shadow-lg hover:shadow-[#0050AA]/25"
+            >
+              <.icon name="hero-chat-bubble-left-right-solid" class="w-5 h-5" /> Chat with AI Chef
             </.link>
-            
-            <.link navigate="/recipes" class="inline-flex items-center justify-center gap-2 bg-base-200 hover:bg-base-300 text-base-content font-semibold px-8 py-4 rounded-xl transition-all">
-              <.icon name="hero-magnifying-glass" class="w-5 h-5" />
-              Browse Recipes
+
+            <.link
+              navigate="/recipes"
+              class="inline-flex items-center justify-center gap-2 bg-base-200 hover:bg-base-300 text-base-content font-semibold px-8 py-4 rounded-xl transition-all"
+            >
+              <.icon name="hero-magnifying-glass" class="w-5 h-5" /> Browse Recipes
             </.link>
           </div>
         </div>
       </div>
-      
+
       <%!-- Decorative gradient --%>
-      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-[#0050AA]/5 to-transparent rounded-full blur-3xl -z-10"></div>
+      <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] bg-gradient-to-b from-[#0050AA]/5 to-transparent rounded-full blur-3xl -z-10">
+      </div>
     </section>
 
     <%!-- Features Section --%>
@@ -51,40 +55,49 @@
             Powerful features to help you discover, plan, and cook amazing meals.
           </p>
         </div>
-        
+
         <div class="grid md:grid-cols-3 gap-8">
           <%!-- Feature 1 --%>
           <div class="group p-8 rounded-2xl border border-base-200 hover:border-[#0050AA]/30 hover:shadow-lg transition-all">
             <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-6 border-2 border-[#0050AA] group-hover:bg-[#0050AA] transition-colors">
-              <.icon name="hero-magnifying-glass" class="w-6 h-6 text-[#0050AA] group-hover:text-white transition-colors" />
+              <.icon
+                name="hero-magnifying-glass"
+                class="w-6 h-6 text-[#0050AA] group-hover:text-white transition-colors"
+              />
             </div>
             <h3 class="text-xl font-semibold text-base-content mb-3">Smart Search</h3>
             <p class="text-base-content/60 leading-relaxed">
-              Search using natural language. Our AI understands "quick dinner with chicken" 
+              Search using natural language. Our AI understands "quick dinner with chicken"
               just as well as specific dish names.
             </p>
           </div>
-          
+
           <%!-- Feature 2 --%>
           <div class="group p-8 rounded-2xl border border-base-200 hover:border-[#FFF000]/50 hover:shadow-lg transition-all">
             <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-6 border-2 border-[#FFF000] group-hover:bg-[#FFF000] transition-colors">
-              <.icon name="hero-shopping-bag" class="w-6 h-6 text-[#FFF000] group-hover:text-[#0050AA]" />
+              <.icon
+                name="hero-shopping-bag"
+                class="w-6 h-6 text-[#FFF000] group-hover:text-[#0050AA]"
+              />
             </div>
             <h3 class="text-xl font-semibold text-base-content mb-3">Ingredient Match</h3>
             <p class="text-base-content/60 leading-relaxed">
-              Tell us what's in your fridge and we'll find recipes you can make right now. 
+              Tell us what's in your fridge and we'll find recipes you can make right now.
               Plus a shopping list for what you're missing.
             </p>
           </div>
-          
+
           <%!-- Feature 3 --%>
           <div class="group p-8 rounded-2xl border border-base-200 hover:border-[#E60A14]/30 hover:shadow-lg transition-all">
             <div class="w-12 h-12 rounded-xl flex items-center justify-center mb-6 border-2 border-[#E60A14] group-hover:bg-[#E60A14] transition-colors">
-              <.icon name="hero-calendar" class="w-6 h-6 text-[#E60A14] group-hover:text-white transition-colors" />
+              <.icon
+                name="hero-calendar"
+                class="w-6 h-6 text-[#E60A14] group-hover:text-white transition-colors"
+              />
             </div>
             <h3 class="text-xl font-semibold text-base-content mb-3">Meal Planning</h3>
             <p class="text-base-content/60 leading-relaxed">
-              Get personalized weekly meal plans based on your dietary preferences, 
+              Get personalized weekly meal plans based on your dietary preferences,
               cooking time, and ingredient variety.
             </p>
           </div>
@@ -127,22 +140,34 @@
             From ingredients to delicious meal in three simple steps
           </p>
         </div>
-        
+
         <div class="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
           <div class="text-center">
-            <div class="w-12 h-12 bg-[#0050AA] text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">1</div>
+            <div class="w-12 h-12 bg-[#0050AA] text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+              1
+            </div>
             <h3 class="font-semibold text-base-content mb-2">Tell us your ingredients</h3>
-            <p class="text-sm text-base-content/60">List what you have or describe what you're craving</p>
+            <p class="text-sm text-base-content/60">
+              List what you have or describe what you're craving
+            </p>
           </div>
           <div class="text-center">
-            <div class="w-12 h-12 bg-[#FFF000] text-[#0050AA] rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">2</div>
+            <div class="w-12 h-12 bg-[#FFF000] text-[#0050AA] rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+              2
+            </div>
             <h3 class="font-semibold text-base-content mb-2">AI finds matches</h3>
-            <p class="text-sm text-base-content/60">Our smart assistant searches and suggests the best options</p>
+            <p class="text-sm text-base-content/60">
+              Our smart assistant searches and suggests the best options
+            </p>
           </div>
           <div class="text-center">
-            <div class="w-12 h-12 bg-[#E60A14] text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">3</div>
+            <div class="w-12 h-12 bg-[#E60A14] text-white rounded-full flex items-center justify-center mx-auto mb-4 text-xl font-bold">
+              3
+            </div>
             <h3 class="font-semibold text-base-content mb-2">Start cooking</h3>
-            <p class="text-sm text-base-content/60">Follow the recipe and enjoy your homemade meal</p>
+            <p class="text-sm text-base-content/60">
+              Follow the recipe and enjoy your homemade meal
+            </p>
           </div>
         </div>
       </div>
@@ -157,9 +182,11 @@
         <p class="text-white/70 mb-8 text-lg">
           Start chatting with our AI assistant and discover your next favorite recipe.
         </p>
-        <.link navigate="/chat" class="inline-flex items-center justify-center gap-2 bg-[#FFF000] hover:bg-yellow-300 text-[#0050AA] font-bold px-8 py-4 rounded-xl transition-all hover:scale-105">
-          <.icon name="hero-chat-bubble-left-right-solid" class="w-5 h-5" />
-          Start Cooking with AI
+        <.link
+          navigate="/chat"
+          class="inline-flex items-center justify-center gap-2 bg-[#FFF000] hover:bg-yellow-300 text-[#0050AA] font-bold px-8 py-4 rounded-xl transition-all hover:scale-105"
+        >
+          <.icon name="hero-chat-bubble-left-right-solid" class="w-5 h-5" /> Start Cooking with AI
         </.link>
       </div>
     </section>
@@ -175,9 +202,15 @@
             <span class="font-semibold text-base-content">Lidl Chef</span>
           </div>
           <div class="flex items-center gap-6 text-sm text-base-content/60">
-            <.link navigate="/recipes" class="hover:text-base-content transition-colors">Recipes</.link>
-            <.link navigate="/chat" class="hover:text-base-content transition-colors">AI Chat</.link>
-            <.link navigate="/arcana" class="hover:text-base-content transition-colors">Dashboard</.link>
+            <.link navigate="/recipes" class="hover:text-base-content transition-colors">
+              Recipes
+            </.link>
+            <.link navigate="/chat" class="hover:text-base-content transition-colors">
+              AI Chat
+            </.link>
+            <.link navigate="/arcana" class="hover:text-base-content transition-colors">
+              Dashboard
+            </.link>
           </div>
           <p class="text-xs text-base-content/40">
             Powered by AI & Phoenix

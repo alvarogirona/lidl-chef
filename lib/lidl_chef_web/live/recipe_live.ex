@@ -3,15 +3,16 @@ defmodule LidlChefWeb.RecipeLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok,
-     socket
-     |> assign(:query, "")
-     |> assign(:results, [])
-     |> assign(:loading, false)
-     |> assign(:error, nil)
-     # Future iteration: add natural language search back
-     # |> assign(:search_mode, :natural)
-     }
+    {
+      :ok,
+      socket
+      |> assign(:query, "")
+      |> assign(:results, [])
+      |> assign(:loading, false)
+      |> assign(:error, nil)
+      # Future iteration: add natural language search back
+      # |> assign(:search_mode, :natural)
+    }
   end
 
   @impl true
@@ -148,7 +149,8 @@ defmodule LidlChefWeb.RecipeLive do
           <%!-- Loading State --%>
           <%= if @loading do %>
             <div class="flex flex-col items-center justify-center py-20">
-              <div class="w-12 h-12 border-4 border-[#0050AA]/20 border-t-[#0050AA] rounded-full animate-spin"></div>
+              <div class="w-12 h-12 border-4 border-[#0050AA]/20 border-t-[#0050AA] rounded-full animate-spin">
+              </div>
               <p class="mt-4 text-base-content/60">Buscando recetas...</p>
             </div>
           <% else %>
@@ -184,7 +186,9 @@ defmodule LidlChefWeb.RecipeLive do
                   <div class="w-20 h-20 bg-base-200 rounded-2xl flex items-center justify-center mx-auto mb-6">
                     <.icon name="hero-face-frown" class="w-10 h-10 text-base-content/30" />
                   </div>
-                  <h3 class="text-lg font-semibold text-base-content mb-2">No se encontraron recetas</h3>
+                  <h3 class="text-lg font-semibold text-base-content mb-2">
+                    No se encontraron recetas
+                  </h3>
                   <p class="text-base-content/60">
                     Prueba con otras palabras clave o revisa la ortografía
                   </p>
@@ -245,11 +249,13 @@ defmodule LidlChefWeb.RecipeLive do
         <%!-- Ingredients Preview --%>
         <%= if @recipe_data.ingredients && length(@recipe_data.ingredients) > 0 do %>
           <div class="mb-4 flex-shrink-0">
-            <p class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">Ingredientes</p>
+            <p class="text-xs font-medium text-base-content/50 uppercase tracking-wide mb-2">
+              Ingredientes
+            </p>
             <div class="flex flex-wrap gap-1.5">
               <%= for ingredient <- Enum.take(@recipe_data.ingredients, 4) do %>
                 <span class="bg-base-200 text-base-content/70 px-2 py-0.5 rounded text-xs">
-                  {ingredient |> String.slice(0..20)}<%= if String.length(ingredient) > 20, do: "..." %>
+                  {ingredient |> String.slice(0..20)}{if String.length(ingredient) > 20, do: "..."}
                 </span>
               <% end %>
               <%= if length(@recipe_data.ingredients) > 4 do %>
@@ -278,8 +284,7 @@ defmodule LidlChefWeb.RecipeLive do
             target="_blank"
             class="inline-flex items-center gap-2 w-full justify-center bg-[#0050AA] hover:bg-[#003d80] text-white text-sm font-medium px-4 py-2.5 rounded-xl transition-all flex-shrink-0 mt-auto"
           >
-            Ver Receta
-            <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" />
+            Ver Receta <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" />
           </a>
         <% end %>
       </div>
