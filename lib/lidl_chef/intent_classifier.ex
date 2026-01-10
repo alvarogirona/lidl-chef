@@ -97,7 +97,7 @@ defmodule LidlChef.IntentClassifier do
     end
   end
 
-  defp parse_classification_response(response, original_query) do
+  defp parse_classification_response(response, _original_query) do
     lines = String.split(response, "\n", trim: true)
 
     parsed =
@@ -146,10 +146,11 @@ defmodule LidlChef.IntentClassifier do
         value -> value
       end
 
-    attributes = case Map.get(parsed, "ATTRIBUTES", "NONE") do
-      "NONE" -> []
-      value -> String.split(value, ",") |> Enum.map(&String.trim/1)
-    end
+    attributes =
+      case Map.get(parsed, "ATTRIBUTES", "NONE") do
+        "NONE" -> []
+        value -> String.split(value, ",") |> Enum.map(&String.trim/1)
+      end
 
     days =
       case Map.get(parsed, "DAYS", "NONE") do

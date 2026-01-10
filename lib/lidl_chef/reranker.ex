@@ -16,13 +16,13 @@ defmodule LidlChef.Reranker do
   require Logger
 
   @model "qwen3-reranker-0.6b"
-  @base_url "http://127.0.0.1:8080"
+  @base_url "http://127.0.0.1:1234"
   @default_threshold 5
   @default_timeout :infinity
 
   # Req configuration for HTTP requests
   # Req automatically handles connection pooling internally
-  defp req_client(base_url \\ @base_url) do
+  defp req_client(base_url) do
     Req.new(
       base_url: base_url,
       receive_timeout: @default_timeout,
@@ -64,7 +64,9 @@ defmodule LidlChef.Reranker do
     concurrency = Keyword.get(opts, :concurrency, 10)
     base_url = Keyword.get(opts, :base_url, @base_url)
 
-    Logger.info("[Reranker] Received #{length(chunks)} chunks to rerank (concurrency: #{concurrency}, base_url: #{base_url})")
+    Logger.info(
+      "[Reranker] Received #{length(chunks)} chunks to rerank (concurrency: #{concurrency}, base_url: #{base_url})"
+    )
 
     start_time = System.monotonic_time(:millisecond)
 
@@ -84,7 +86,9 @@ defmodule LidlChef.Reranker do
         ordered: false
       )
       |> Enum.reduce([], fn
-        {:ok, result}, acc -> [result | acc]
+        {:ok, result}, acc ->
+          [result | acc]
+
         {:exit, reason}, acc ->
           Logger.error("[Reranker] Task failed: #{inspect(reason)}")
           acc
@@ -108,7 +112,7 @@ defmodule LidlChef.Reranker do
     |> String.replace("{chunk_text}", chunk_text)
   end
 
-  defp get_score(prompt, base_url \\ @base_url) do
+  defp get_score(prompt, base_url) do
     body = %{
       model: @model,
       messages: [
@@ -143,7 +147,9 @@ defmodule LidlChef.Reranker do
     content = Map.get(choice, "content", "")
     reasoning_content = Map.get(choice, "reasoning_content", "")
 
-    Logger.info("[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}")
+    Logger.info(
+      "[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}"
+    )
 
     # Try to extract score from content first, then from reasoning
     score = parse_score_from_text(content) || parse_score_from_text(reasoning_content) || 0
@@ -160,8 +166,12 @@ defmodule LidlChef.Reranker do
 
     # Try direct integer parse first
     case Integer.parse(text) do
-      {num, ""} when num >= 0 and num <= 10 -> num
-      {num, _} when num >= 0 and num <= 10 -> num
+      {num, ""} when num >= 0 and num <= 10 ->
+        num
+
+      {num, _} when num >= 0 and num <= 10 ->
+        num
+
       _ ->
         # Try to extract a number using regex
         extract_number_from_text(text)
