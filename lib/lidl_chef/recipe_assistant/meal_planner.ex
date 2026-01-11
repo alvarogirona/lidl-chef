@@ -254,8 +254,14 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     FORMATO DE RESPUESTA:
     ## Día 1 (Lunes)
     - 🌅 **Desayuno**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible)
+    **Lista de ingredientes** (si está disponible)
     - 🍽️ **Comida**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible)
+    **Lista de ingredientes** (si está disponible)
     - 🌙 **Cena**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible)
+    **Lista de ingredientes** (si está disponible)
 
     (Repetir para cada día)
 
