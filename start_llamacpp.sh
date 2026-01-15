@@ -3,9 +3,10 @@ cd ~/llama.cpp/build-vulkan/bin && ./llama-server \
   --host 127.0.0.1 \
   --port 8081 \
   --parallel 20 \
-  --ctx-size 4096 \
+  --ctx-size 10240 \
   --n-gpu-layers 99 \
-  --threads $(nproc) > /tmp/llama_server_vulkan.log 2>&1 &
+  --threads $(nproc) >/tmp/llama_server_vulkan.log 2>&1 &
 
 last_pid=$!
 echo "Vulkan server started with PID: $last_pid"
+
