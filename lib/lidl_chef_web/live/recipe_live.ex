@@ -10,9 +10,14 @@ defmodule LidlChefWeb.RecipeLive do
       |> assign(:results, [])
       |> assign(:loading, false)
       |> assign(:error, nil)
-      # Future iteration: add natural language search back
-      # |> assign(:search_mode, :natural)
+      |> assign(:search_mode, :ingredients)
     }
+  end
+
+  @impl true
+  def handle_event("toggle_search_mode", _params, socket) do
+    new_mode = if socket.assigns.search_mode == :ingredients, do: :natural, else: :ingredients
+    {:noreply, assign(socket, :search_mode, new_mode)}
   end
 
   @impl true
@@ -20,15 +25,26 @@ defmodule LidlChefWeb.RecipeLive do
     query = String.trim(query)
 
     if query != "" do
-      # Parse as comma-separated ingredients
-      ingredient_list =
-        query
-        |> String.split(",")
-        |> Enum.map(&String.trim/1)
-        |> Enum.filter(&(&1 != ""))
+      case socket.assigns.search_mode do
+        :ingredients ->
+          ingredient_list =
+            query
+            |> String.split(",")
+            |> Enum.map(&String.trim/1)
+            |> Enum.filter(&(&1 != ""))
 
-      if length(ingredient_list) > 0 do
-        send(self(), {:perform_ingredient_search, ingredient_list})
+          if length(ingredient_list) > 0 do
+            send(self(), {:perform_ingredient_search, ingredient_list})
+          else
+            {:noreply,
+             socket
+             |> assign(:query, query)
+             |> assign(:loading, false)
+             |> assign(:error, "Por favor introduce al menos un ingrediente separado por comas")}
+          end
+
+        :natural ->
+          send(self(), {:perform_natural_search, query})
       end
 
       {:noreply,
@@ -45,24 +61,24 @@ defmodule LidlChefWeb.RecipeLive do
     end
   end
 
-  # Future iteration: Re-enable search mode toggle
-  # @impl true
-  # def handle_event("toggle_search_mode", _params, socket) do
-  #   new_mode = if socket.assigns.search_mode == :natural, do: :ingredients, else: :natural
-  #   {:noreply, assign(socket, :search_mode, new_mode)}
-  # end
+  @impl true
+  def handle_info({:perform_natural_search, query}, socket) do
+    try do
+      {:ok, results} = LidlChef.RecipeAssistant.RecipeSearch.run(query, limit: 20)
 
-  # Future iteration: Re-enable natural language search
-  # @impl true
-  # def handle_info({:perform_search, query}, socket) do
-  #   try do
-  #     {:ok, results} = LidlChef.RecipeAssistant.quick_search(query, limit: 10)
-  #     {:noreply, socket |> assign(:results, results) |> assign(:loading, false)}
-  #   rescue
-  #     error ->
-  #       {:noreply, socket |> assign(:results, []) |> assign(:loading, false) |> assign(:error, "Search failed: #{inspect(error)}")}
-  #   end
-  # end
+      {:noreply,
+       socket
+       |> assign(:results, results)
+       |> assign(:loading, false)}
+    rescue
+      error ->
+        {:noreply,
+         socket
+         |> assign(:results, [])
+         |> assign(:loading, false)
+         |> assign(:error, "Search failed: #{inspect(error)}")}
+    end
+  end
 
   @impl true
   def handle_info({:perform_ingredient_search, ingredients}, socket) do
@@ -91,13 +107,41 @@ defmodule LidlChefWeb.RecipeLive do
         <%!-- Hero Search Section --%>
         <div class="bg-gradient-to-b from-base-200/50 to-base-100 py-12 sm:py-16">
           <div class="max-w-4xl mx-auto px-4 sm:px-6">
-            <div class="text-center mb-8">
+            <div class="text-center mb-6">
               <h1 class="text-3xl sm:text-4xl font-bold text-base-content mb-3">
-                Busca recetas por ingredientes
+                Busca recetas
               </h1>
               <p class="text-base-content/60 max-w-xl mx-auto">
-                Encuentra recetas perfectas usando los ingredientes que tienes
+                Encuentra recetas perfectas usando el método que prefieras
               </p>
+            </div>
+
+            <%!-- Search Mode Toggle --%>
+            <div class="flex items-center justify-center mb-6">
+              <div class="inline-flex bg-base-200 p-1 rounded-xl">
+                <button
+                  type="button"
+                  phx-click="toggle_search_mode"
+                  class={[
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    @search_mode == :ingredients && "bg-[#0050AA] text-white",
+                    @search_mode != :ingredients && "text-base-content/70 hover:text-base-content"
+                  ]}
+                >
+                  Por ingredientes
+                </button>
+                <button
+                  type="button"
+                  phx-click="toggle_search_mode"
+                  class={[
+                    "px-4 py-2 rounded-lg text-sm font-medium transition-all",
+                    @search_mode == :natural && "bg-[#0050AA] text-white",
+                    @search_mode != :natural && "text-base-content/70 hover:text-base-content"
+                  ]}
+                >
+                  Lenguaje natural
+                </button>
+              </div>
             </div>
 
             <%!-- Main Search --%>
@@ -110,7 +154,13 @@ defmodule LidlChefWeb.RecipeLive do
                   type="text"
                   name="search[query]"
                   value={@query}
-                  placeholder="Introduce ingredientes separados por comas (ej: pollo, tomate, cebolla)"
+                  placeholder={
+                    if @search_mode == :ingredients do
+                      "pollo, tomate, cebolla"
+                    else
+                      "tengo pollo y tomate, ¿qué recetas puedo hacer?"
+                    end
+                  }
                   class="w-full pl-12 pr-32 py-4 bg-base-100 border border-[#FFF000]/50 rounded-2xl text-base-content placeholder-base-content/40 focus:outline-none focus:ring-2 focus:ring-[#FFF000]/30 focus:border-[#FFF000] transition-all"
                 />
                 <div class="absolute inset-y-0 right-2 flex items-center">
@@ -131,8 +181,15 @@ defmodule LidlChefWeb.RecipeLive do
 
             <%!-- Helper text --%>
             <p class="text-center text-xs text-base-content/50 mt-3">
-              <.icon name="hero-shopping-bag" class="w-3 h-3 inline-block mr-1" />
-              Encontraremos recetas que puedas preparar con tus ingredientes
+              <.icon
+                name={(@search_mode == :ingredients && "hero-shopping-bag") || "hero-sparkles"}
+                class="w-3 h-3 inline-block mr-1"
+              />
+              {if @search_mode == :ingredients do
+                "Introduce ingredientes separados por comas"
+              else
+                "Escribe en lenguaje natural lo que buscas"
+              end}
             </p>
           </div>
         </div>
