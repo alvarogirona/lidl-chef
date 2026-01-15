@@ -3,68 +3,60 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
   alias Arcana.Agent
   require Logger
 
+  def run(question, intent_info, opts) when length(intent_info.ingredients) > 0 do
+    limit = Keyword.get(opts, :limit, 10)
+    self_correct = Keyword.get(opts, :self_correct, true)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    search_query = build_ingredient_search_query(intent_info)
+    Logger.debug("Built ingredient search query: #{search_query}")
+
+    ctx = Agent.new(question, repo: Repo, limit: limit)
+    ctx = search_with_query(ctx, search_query, question, limit)
+    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
+
+    log_ctx_results(ctx)
+
+    ctx =
+      Agent.answer(ctx,
+        repo: Repo,
+        prompt: fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end,
+        self_correct: self_correct
+      )
+
+    handle_answer(ctx)
+  end
+
   def run(question, intent_info, opts) do
     limit = Keyword.get(opts, :limit, 10)
     self_correct = Keyword.get(opts, :self_correct, true)
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
     reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
 
-    if length(intent_info.ingredients) > 0 do
-      search_query = build_ingredient_search_query(intent_info)
-      Logger.debug("Built ingredient search query: #{search_query}")
+    ctx =
+      Agent.new(question, repo: Repo, limit: limit)
+      |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+      |> maybe_rerank(reranker_concurrency, !skip_rerank)
 
-      ctx = Agent.new(question, repo: Repo, limit: limit)
-      # Replace question with optimized search query but keep original for prompt
-      ctx = search_with_query(ctx, search_query, question, limit)
+    ctx =
+      Agent.answer(ctx,
+        repo: Repo,
+        prompt: fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end,
+        self_correct: self_correct
+      )
 
-      ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-      if Logger.level() == :debug do
-        log_ctx_results(ctx)
-      end
-
-      prompt_fn = fn question, chunks ->
-        build_ingredient_prompt(question, chunks, intent_info)
-      end
-
-      ctx =
-        Agent.answer(ctx,
-          repo: Repo,
-          prompt: prompt_fn,
-          self_correct: self_correct
-        )
-
-      handle_answer(ctx)
-    else
-      # If no ingredients, fall back to simple search
-      ctx =
-        Agent.new(question, repo: Repo, limit: limit)
-        |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
-        |> maybe_rerank(reranker_concurrency, !skip_rerank)
-
-      prompt_fn = fn question, chunks ->
-        build_ingredient_prompt(question, chunks, intent_info)
-      end
-
-      ctx =
-        Agent.answer(ctx,
-          repo: Repo,
-          prompt: prompt_fn,
-          self_correct: self_correct
-        )
-
-      handle_answer(ctx)
-    end
+    handle_answer(ctx)
   end
 
-  defp handle_answer(ctx) do
-    if ctx.answer do
-      Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
-      {:ok, ctx.answer}
-    else
-      Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
-      {:error, {:no_answer, "Agent did not generate an answer"}}
-    end
+  defp handle_answer(%{answer: answer}) when not is_nil(answer) do
+    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
+    {:ok, answer}
+  end
+
+  defp handle_answer(%{error: error}) do
+    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
+    {:error, {:no_answer, "Agent did not generate an answer"}}
   end
 
   defp maybe_rerank(ctx, _, false), do: ctx
@@ -95,18 +87,23 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     dietary = intent_info.dietary
     meal_type = intent_info.meal_type
     base_query = Enum.join(ingredients, " ")
-    # Add dietary filter if present
-    base_query = if dietary, do: "#{base_query} #{dietary}", else: base_query
 
-    # Add meal type context if present
-    case meal_type do
-      :breakfast -> "#{base_query} desayuno"
-      :lunch -> "#{base_query} comida almuerzo"
-      :dinner -> "#{base_query} cena"
-      :snack -> "#{base_query} merienda snack"
-      _ -> base_query
-    end
+    base_query
+    |> add_dietary_to_query(dietary)
+    |> add_meal_type_to_query(meal_type)
   end
+
+  defp add_dietary_to_query(base_query, dietary) when is_binary(dietary) do
+    "#{base_query} #{dietary}"
+  end
+
+  defp add_dietary_to_query(base_query, _dietary), do: base_query
+
+  defp add_meal_type_to_query(base_query, :breakfast), do: "#{base_query} desayuno"
+  defp add_meal_type_to_query(base_query, :lunch), do: "#{base_query} comida almuerzo"
+  defp add_meal_type_to_query(base_query, :dinner), do: "#{base_query} cena"
+  defp add_meal_type_to_query(base_query, :snack), do: "#{base_query} merienda snack"
+  defp add_meal_type_to_query(base_query, _), do: base_query
 
   defp search_with_query(ctx, search_query, original_question, limit) do
     case Recipes.search(search_query, limit: limit, graph: false, mode: :hybrid) do

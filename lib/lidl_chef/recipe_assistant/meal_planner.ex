@@ -5,8 +5,9 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
 
   def run(question, intent_info, opts) do
     IO.inspect(opts, label: "MealPlanner opts")
-    # For meal planning, we typically want a lot of candidate recipes to ensure variety.
-    target_limit = Keyword.get(opts, :limit, 50)
+    # For meal planning, we always want a large candidate pool to ensure variety.
+    # Ignore the limit option and always use 50.
+    target_limit = 50
 
     # Reranking is often skipped for meal planning to keep diversity and volume, or maybe done?
     # Original code had: :skip_rerank, true for :meal_planning
@@ -25,9 +26,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     # Rerank if not skipped (default is skipped)
     ctx = maybe_rerank(ctx, Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
 
-    if Logger.level() == :debug do
-      log_ctx_results(ctx)
-    end
+    log_ctx_results(ctx)
 
     prompt_fn = fn question, chunks ->
       build_meal_planning_prompt(question, chunks, intent_info)
@@ -43,36 +42,33 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     handle_answer(ctx)
   end
 
-  defp handle_answer(ctx) do
-    if ctx.answer do
-      Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
-      {:ok, ctx.answer}
-    else
-      Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
-      {:error, {:no_answer, "Agent did not generate an answer"}}
-    end
+  defp handle_answer(%{answer: answer}) when is_binary(answer) do
+    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
+    {:ok, answer}
   end
 
-  defp maybe_rerank(ctx, _, false), do: ctx
-
-  defp maybe_rerank(ctx, reranker_concurrency, true),
-    do:
-      Agent.rerank(ctx,
-        reranker: Reranker,
-        threshold: 2,
-        concurrency: reranker_concurrency,
-        base_url: "http://127.0.0.1:1234"
-      )
-
-  defp log_ctx_results(ctx) do
-    result_chunks =
-      case ctx.results do
-        [%{chunks: chunks} | _] -> length(chunks)
-        _ -> 0
-      end
-
-    Logger.debug("After multi_search_for_menus: ctx.results has #{result_chunks} chunks")
+  defp handle_answer(%{error: error}) do
+    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
+    {:error, {:no_answer, "Agent did not generate an answer"}}
   end
+
+  defp maybe_rerank(ctx, _concurrency, false), do: ctx
+
+  defp maybe_rerank(ctx, reranker_concurrency, true) do
+    Agent.rerank(ctx,
+      reranker: Reranker,
+      threshold: 2,
+      concurrency: reranker_concurrency,
+      base_url: "http://127.0.0.1:1234"
+    )
+  end
+
+  defp log_ctx_results(%{results: [%{chunks: chunks} | _]}) do
+    Logger.debug("After multi_search_for_menus: ctx.results has #{length(chunks)} chunks")
+  end
+
+  defp log_ctx_results(_ctx),
+    do: Logger.debug("After multi_search_for_menus: ctx.results has 0 chunks")
 
   defp default_answer(ctx, opts), do: Agent.answer(ctx, opts)
 
@@ -126,29 +122,28 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
   end
 
   defp extract_dietary_filter(question) do
-    cond do
-      String.contains?(question, ["vegano"]) -> "vegano"
-      String.contains?(question, ["vegetariano"]) -> "vegetariano"
-      String.contains?(question, ["sin gluten", "celiaco"]) -> "sin gluten"
-      String.contains?(question, ["bajo en calorías", "light", "ligero"]) -> "light bajo calorías"
-      true -> nil
-    end
+    filters = [
+      {["vegano"], "vegano"},
+      {["vegetariano"], "vegetariano"},
+      {["sin gluten", "celiaco"], "sin gluten"},
+      {["bajo en calorías", "light", "ligero"], "light bajo calorías"}
+    ]
+
+    Enum.find_value(filters, fn {keywords, filter} ->
+      if String.contains?(question, keywords), do: filter
+    end)
   end
 
   defp build_menu_search_queries(question, dietary_filter) do
     base_queries = [
-      # Breakfast queries
       "desayuno tostada smoothie zumo cereales",
       "desayuno ligero fruta yogur muesli",
-      # Lunch queries
       "comida almuerzo ensalada plato principal",
       "arroz pasta legumbres comida",
       "pollo carne pescado principal",
-      # Dinner queries
       "cena ligera sopa crema",
       "cena pescado verduras",
       "cena rápida fácil",
-      # Variety
       "postre dulce fruta",
       "snack merienda tentempié"
     ]
@@ -161,12 +156,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
       "pescado marisco"
     ]
 
-    queries =
-      if dietary_filter do
-        Enum.map(base_queries, fn q -> "#{q} #{dietary_filter}" end)
-      else
-        base_queries
-      end
+    queries = maybe_add_dietary_filter(base_queries, dietary_filter)
 
     original_terms =
       question
@@ -178,11 +168,16 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
 
     all_queries = queries ++ ingredient_queries
 
-    if original_terms != "" do
-      [original_terms | all_queries]
-    else
-      all_queries
+    case original_terms do
+      "" -> all_queries
+      terms -> [terms | all_queries]
     end
+  end
+
+  defp maybe_add_dietary_filter(queries, nil), do: queries
+
+  defp maybe_add_dietary_filter(queries, filter) do
+    Enum.map(queries, &"#{&1} #{filter}")
   end
 
   defp search_single(query, limit, search_fn) do
@@ -190,34 +185,27 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     ttl = :timer.hours(2)
 
     case Cachex.fetch(:recipe_search_cache, cache_key, fn _key ->
-           case search_fn.(query, limit) do
-             {:ok, chunks} -> {:commit, chunks, ttl: ttl}
+           with {:ok, chunks} <- search_fn.(query, limit) do
+             {:commit, chunks, ttl: ttl}
+           else
              _ -> {:ignore, []}
            end
          end) do
-      {:ok, chunks} ->
-        chunks
+      {:ok, chunks} -> chunks
+      {:commit, chunks} -> chunks
+      _ -> fallback_search(query, limit, search_fn)
+    end
+  end
 
-      {:commit, chunks} ->
-        chunks
-
-      {:error, _} ->
-        # If cache isn't available for any reason, still try searching.
-        case search_fn.(query, limit) do
-          {:ok, chunks} -> chunks
-          _ -> []
-        end
-
-      _ ->
-        []
+  defp fallback_search(query, limit, search_fn) do
+    case search_fn.(query, limit) do
+      {:ok, chunks} -> chunks
+      _ -> []
     end
   end
 
   defp deduplicate_chunks(chunks) do
-    chunks
-    |> Enum.uniq_by(fn chunk ->
-      chunk.document_id || extract_title_from_chunk(chunk.text)
-    end)
+    Enum.uniq_by(chunks, &(&1.document_id || extract_title_from_chunk(&1.text)))
   end
 
   defp extract_title_from_chunk(text) do
@@ -230,9 +218,12 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
   defp build_meal_planning_prompt(question, chunks, intent_info) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
     days = intent_info.days || 1
-    dietary = intent_info.dietary
 
-    dietary_note = if dietary, do: "\n⚠️ El usuario requiere comidas #{dietary}.", else: ""
+    dietary_note =
+      case intent_info.dietary do
+        nil -> ""
+        dietary -> "\n⚠️ El usuario requiere comidas #{dietary}."
+      end
 
     Logger.debug("Building meal planning prompt: #{length(chunks)} chunks, #{days} days")
 

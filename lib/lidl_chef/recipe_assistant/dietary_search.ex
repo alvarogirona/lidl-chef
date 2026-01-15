@@ -29,14 +29,14 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     handle_answer(ctx)
   end
 
-  defp handle_answer(ctx) do
-    if ctx.answer do
-      Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
-      {:ok, ctx.answer}
-    else
-      Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
-      {:error, {:no_answer, "Agent did not generate an answer"}}
-    end
+  defp handle_answer(%{answer: answer}) when not is_nil(answer) do
+    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
+    {:ok, answer}
+  end
+
+  defp handle_answer(%{error: error}) do
+    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
+    {:error, {:no_answer, "Agent did not generate an answer"}}
   end
 
   defp maybe_rerank(ctx, _, false), do: ctx

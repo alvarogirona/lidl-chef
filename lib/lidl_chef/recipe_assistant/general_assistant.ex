@@ -95,43 +95,41 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
     skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
     reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
 
-    ctx =
-      if skip_rewrite do
-        Agent.new(question, repo: Repo, limit: limit)
-        |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
-      else
-        Agent.new(question, repo: Repo, limit: limit)
-        |> Agent.rewrite()
-        |> Agent.expand()
-        |> Agent.search(collection: Recipes.collection_name(), graph: false)
-      end
-
+    ctx = build_context(question, skip_rewrite, limit)
     ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
 
-    if Logger.level() == :debug do
-      log_ctx_results(ctx)
-    end
-
-    prompt_fn = &build_agentic_prompt/2
+    log_ctx_results(ctx)
 
     ctx =
       Agent.answer(ctx,
         repo: Repo,
-        prompt: prompt_fn,
+        prompt: &build_agentic_prompt/2,
         self_correct: self_correct
       )
 
     handle_answer(ctx)
   end
 
-  defp handle_answer(ctx) do
-    if ctx.answer do
-      Logger.debug("After answer phase: Generated #{String.length(ctx.answer)} chars")
-      {:ok, ctx.answer}
-    else
-      Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(ctx.error)}")
-      {:error, {:no_answer, "Agent did not generate an answer"}}
-    end
+  defp build_context(question, true, limit) do
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+  end
+
+  defp build_context(question, false, limit) do
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.rewrite()
+    |> Agent.expand()
+    |> Agent.search(collection: Recipes.collection_name(), graph: false)
+  end
+
+  defp handle_answer(%{answer: answer}) when not is_nil(answer) do
+    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
+    {:ok, answer}
+  end
+
+  defp handle_answer(%{error: error}) do
+    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
+    {:error, {:no_answer, "Agent did not generate an answer"}}
   end
 
   defp maybe_rerank(ctx, _, false), do: ctx
@@ -160,40 +158,22 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
   defp build_agentic_prompt(question, chunks) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
 
-    if Logger.level() == :debug do
-      Logger.debug(
-        "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
-      )
+    Logger.debug(
+      "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
+    )
 
-      recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
-      Logger.debug("  → Recipe entries found in context: #{recipe_count}")
+    recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
+    Logger.debug("  → Recipe entries found in context: #{recipe_count}")
 
-      urls =
-        Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
-        |> Enum.map(&hd/1)
-        |> Enum.uniq()
+    urls =
+      Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
+      |> Enum.map(&hd/1)
+      |> Enum.uniq()
 
-      Logger.debug("  → #{length(urls)} unique URLs in context")
-      Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
-    end
+    Logger.debug("  → #{length(urls)} unique URLs in context")
+    Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
 
-    is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
-
-    menu_instructions =
-      if is_menu_request do
-        """
-
-        ⚠️ IMPORTANTE PARA MENÚS:
-        - El usuario ha solicitado un MENÚ, NO recetas individuales
-        - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
-        - DEBES organizar estas recetas en un menú estructurado
-        - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
-        - Puedes y DEBES usar las recetas del contexto para crear el menú completo
-        - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
-        """
-      else
-        ""
-      end
+    menu_instructions = build_menu_instructions(question, chunks)
 
     """
     #{@agentic_system_prompt}
@@ -212,5 +192,24 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
 
     Proporciona una respuesta útil usando SOLO las recetas del contexto anterior.
     """
+  end
+
+  defp build_menu_instructions(question, chunks) do
+    is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
+
+    if is_menu_request do
+      """
+
+      ⚠️ IMPORTANTE PARA MENÚS:
+      - El usuario ha solicitado un MENÚ, NO recetas individuales
+      - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
+      - DEBES organizar estas recetas en un menú estructurado
+      - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
+      - Puedes y DEBES usar las recetas del contexto para crear el menú completo
+      - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
+      """
+    else
+      ""
+    end
   end
 end
