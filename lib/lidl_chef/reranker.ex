@@ -16,7 +16,7 @@ defmodule LidlChef.Reranker do
   require Logger
 
   @model "qwen3-reranker-0.6b"
-  @base_url "http://127.0.0.1:1234"
+  @base_url "http://127.0.0.1:8081"
   @default_threshold 5
   @default_timeout :infinity
 
