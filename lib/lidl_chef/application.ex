@@ -4,9 +4,18 @@ defmodule LidlChef.Application do
   @moduledoc false
 
   use Application
+  require Logger
 
   @impl true
   def start(_type, _args) do
+    case LLMDB.load() do
+      {:ok, _snapshot} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("LLMDB load failed: #{inspect(reason)}")
+    end
+
     children = [
       LidlChefWeb.Telemetry,
       LidlChef.Repo,

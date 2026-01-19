@@ -20,13 +20,14 @@ defmodule LidlChefWeb.ChefChatLive do
     if message != "" do
       # Add user message to chat
       user_message = %{role: :user, content: message, timestamp: DateTime.utc_now()}
+      assistant_message = %{role: :assistant, content: "", timestamp: DateTime.utc_now()}
 
-      # Send async task to process with LLM
-      send(self(), {:process_message, message})
+      # Send async task to process with streaming LLM
+      send(self(), {:process_message_stream, message})
 
       {:noreply,
        socket
-       |> assign(:messages, socket.assigns.messages ++ [user_message])
+       |> assign(:messages, socket.assigns.messages ++ [user_message, assistant_message])
        |> assign(:input, "")
        |> assign(:loading, true)
        |> assign(:error, nil)}
@@ -44,37 +45,56 @@ defmodule LidlChefWeb.ChefChatLive do
   def handle_event("send_suggestion", %{"message" => message}, socket) do
     # Add user message to chat
     user_message = %{role: :user, content: message, timestamp: DateTime.utc_now()}
+    assistant_message = %{role: :assistant, content: "", timestamp: DateTime.utc_now()}
 
-    # Send async task to process with LLM
-    send(self(), {:process_message, message})
+    # Send async task to process with streaming LLM
+    send(self(), {:process_message_stream, message})
 
     {:noreply,
      socket
-     |> assign(:messages, socket.assigns.messages ++ [user_message])
+     |> assign(:messages, socket.assigns.messages ++ [user_message, assistant_message])
      |> assign(:input, "")
      |> assign(:loading, true)
      |> assign(:error, nil)}
   end
 
   @impl true
-  def handle_info({:process_message, message}, socket) do
-    case RecipeAssistant.ask(message, limit: 5, self_correct: false) do
-      {:ok, response} ->
-        assistant_message = %{role: :assistant, content: response, timestamp: DateTime.utc_now()}
+  def handle_info({:process_message_stream, message}, socket) do
+    parent = self()
 
-        {:noreply,
-         socket
-         |> assign(:messages, socket.assigns.messages ++ [assistant_message])
-         |> assign(:loading, false)}
+    Task.start(fn ->
+      result =
+        RecipeAssistant.ask_stream(
+          message,
+          fn chunk -> send(parent, {:assistant_chunk, chunk}) end,
+          limit: 5,
+          self_correct: false
+        )
 
-      {:error, reason} ->
-        error_message = format_error(reason)
+      send(parent, {:assistant_done, result})
+    end)
 
-        {:noreply,
-         socket
-         |> assign(:loading, false)
-         |> assign(:error, error_message)}
-    end
+    {:noreply, socket}
+  end
+
+  def handle_info({:assistant_chunk, chunk}, socket) do
+    {:noreply, update(socket, :messages, &append_to_last_assistant(&1, chunk))}
+  end
+
+  def handle_info({:assistant_done, {:ok, full_text}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:messages, set_last_assistant(socket.assigns.messages, full_text))
+     |> assign(:loading, false)}
+  end
+
+  def handle_info({:assistant_done, {:error, reason}}, socket) do
+    error_message = format_error(reason)
+
+    {:noreply,
+     socket
+     |> assign(:loading, false)
+     |> assign(:error, error_message)}
   end
 
   defp format_error({:no_answer, _}),
@@ -82,6 +102,38 @@ defmodule LidlChefWeb.ChefChatLive do
 
   defp format_error({:agent_error, msg}), do: "Ha ocurrido un error: #{msg}"
   defp format_error(reason), do: "Algo salió mal: #{inspect(reason)}"
+
+  defp append_to_last_assistant(messages, chunk) do
+    case Enum.reverse(messages) do
+      [%{role: :assistant} = last | rest] ->
+        new_content =
+          cond do
+            last.content == "" ->
+              chunk
+            String.starts_with?(chunk, last.content) ->
+              chunk
+            true ->
+              last.content <> chunk
+          end
+
+        updated_last = %{last | content: new_content}
+        Enum.reverse([updated_last | rest])
+
+      _ ->
+        messages
+    end
+  end
+
+  defp set_last_assistant(messages, content) do
+    case Enum.reverse(messages) do
+      [%{role: :assistant} = last | rest] ->
+        updated_last = %{last | content: content}
+        Enum.reverse([updated_last | rest])
+
+      _ ->
+        messages
+    end
+  end
 
   @impl true
   def render(assigns) do

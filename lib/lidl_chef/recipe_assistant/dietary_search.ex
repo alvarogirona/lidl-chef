@@ -1,5 +1,5 @@
 defmodule LidlChef.RecipeAssistant.DietarySearch do
-  alias LidlChef.{Recipes, Repo, Reranker}
+  alias LidlChef.{LLM, Recipes, Repo, Reranker}
   alias Arcana.Agent
   require Logger
 
@@ -27,6 +27,23 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
       )
 
     handle_answer(ctx)
+  end
+
+  def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
+    limit = Keyword.get(opts, :limit, 10)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    ctx =
+      Agent.new(question, repo: Repo, limit: limit)
+      |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+
+    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
+
+    chunks = extract_chunks(ctx)
+    prompt = build_dietary_prompt(question, chunks, intent_info)
+
+    LLM.stream(prompt, on_chunk, opts)
   end
 
   defp handle_answer(%{answer: answer}) when not is_nil(answer) do
@@ -84,4 +101,7 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     Encuentra recetas #{dietary} en el contexto y recomiéndalas.
     """
   end
+
+  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
+  defp extract_chunks(_), do: []
 end

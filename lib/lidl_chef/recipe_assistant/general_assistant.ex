@@ -1,5 +1,5 @@
 defmodule LidlChef.RecipeAssistant.GeneralAssistant do
-  alias LidlChef.{Recipes, Repo, Reranker}
+  alias LidlChef.{LLM, Recipes, Repo, Reranker}
   alias Arcana.Agent
   require Logger
 
@@ -110,6 +110,23 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
     handle_answer(ctx)
   end
 
+  def run_stream(question, _intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
+    limit = Keyword.get(opts, :limit, 5)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    ctx = build_context(question, skip_rewrite, limit)
+    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
+
+    log_ctx_results(ctx)
+
+    chunks = extract_chunks(ctx)
+    prompt = build_agentic_prompt(question, chunks)
+
+    LLM.stream(prompt, on_chunk, opts)
+  end
+
   defp build_context(question, true, limit) do
     Agent.new(question, repo: Repo, limit: limit)
     |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
@@ -121,6 +138,9 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
     |> Agent.expand()
     |> Agent.search(collection: Recipes.collection_name(), graph: false)
   end
+
+  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
+  defp extract_chunks(_), do: []
 
   defp handle_answer(%{answer: answer}) when not is_nil(answer) do
     Logger.debug("After answer phase: Generated #{String.length(answer)} chars")

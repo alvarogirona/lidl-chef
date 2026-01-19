@@ -1,5 +1,5 @@
 defmodule LidlChef.RecipeAssistant.MealPlanner do
-  alias LidlChef.{Recipes, Repo, Reranker}
+  alias LidlChef.{LLM, Recipes, Repo, Reranker}
   alias Arcana.Agent
   require Logger
 
@@ -42,6 +42,26 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     handle_answer(ctx)
   end
 
+  def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
+    IO.inspect(opts, label: "MealPlanner opts")
+    target_limit = 50
+    skip_rerank = Keyword.get(opts, :skip_rerank, true)
+    search_fn = Keyword.get(opts, :search_fn, &default_search/2)
+
+    ctx = Agent.new(question, repo: Repo, limit: target_limit)
+    ctx = %{ctx | question: question}
+    ctx = multi_search_for_menus(ctx, question, target_limit, search_fn)
+
+    ctx = maybe_rerank(ctx, Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
+
+    log_ctx_results(ctx)
+
+    chunks = extract_chunks(ctx)
+    prompt = build_meal_planning_prompt(question, chunks, intent_info)
+
+    LLM.stream(prompt, on_chunk, opts)
+  end
+
   defp handle_answer(%{answer: answer}) when is_binary(answer) do
     Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
     {:ok, answer}
@@ -69,6 +89,9 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
 
   defp log_ctx_results(_ctx),
     do: Logger.debug("After multi_search_for_menus: ctx.results has 0 chunks")
+
+  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
+  defp extract_chunks(_), do: []
 
   defp default_answer(ctx, opts), do: Agent.answer(ctx, opts)
 
@@ -241,19 +264,19 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     2. Asegura variedad: no repitas el mismo tipo de proteína dos días seguidos
     3. Incluye recetas ligeras para cenas y más contundentes para comidas
     4. Para cada receta, incluye nombre EXACTO y URL EXACTA del contexto
+    5. Si el usuario te solicita 2 platos en la comida o cena, incluye dos recetas en cada una de esas comidas.
 
     FORMATO DE RESPUESTA:
     ## Día 1 (Lunes)
-    - 🌅 **Desayuno**: [Nombre de Receta](URL) - breve descripción
-    **Información nutricional** (si está disponible)
+    ### 🌅 **Desayuno**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible) \n\n
     **Lista de ingredientes** (si está disponible)
-    - 🍽️ **Comida**: [Nombre de Receta](URL) - breve descripción
-    **Información nutricional** (si está disponible)
+    ### 🍽️ **Comida**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible) \n\n
     **Lista de ingredientes** (si está disponible)
-    - 🌙 **Cena**: [Nombre de Receta](URL) - breve descripción
-    **Información nutricional** (si está disponible)
+    ### 🌙 **Cena**: [Nombre de Receta](URL) - breve descripción
+    **Información nutricional** (si está disponible) \n\n
     **Lista de ingredientes** (si está disponible)
-
     (Repetir para cada día)
 
     REGLAS:

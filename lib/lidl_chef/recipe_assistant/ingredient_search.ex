@@ -1,5 +1,5 @@
 defmodule LidlChef.RecipeAssistant.IngredientSearch do
-  alias LidlChef.{Recipes, Repo}
+  alias LidlChef.{LLM, Recipes, Repo}
   alias Arcana.Agent
   require Logger
 
@@ -28,6 +28,27 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     handle_answer(ctx)
   end
 
+  def run_stream(question, intent_info, on_chunk, opts)
+      when length(intent_info.ingredients) > 0 and is_function(on_chunk, 1) do
+    limit = Keyword.get(opts, :limit, 10)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    search_query = build_ingredient_search_query(intent_info)
+    Logger.debug("Built ingredient search query: #{search_query}")
+
+    ctx = Agent.new(question, repo: Repo, limit: limit)
+    ctx = search_with_query(ctx, search_query, question, limit)
+    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
+
+    log_ctx_results(ctx)
+
+    chunks = extract_chunks(ctx)
+    prompt = build_ingredient_prompt(question, chunks, intent_info)
+
+    LLM.stream(prompt, on_chunk, opts)
+  end
+
   def run(question, intent_info, opts) do
     limit = Keyword.get(opts, :limit, 10)
     self_correct = Keyword.get(opts, :self_correct, true)
@@ -47,6 +68,22 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
       )
 
     handle_answer(ctx)
+  end
+
+  def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
+    limit = Keyword.get(opts, :limit, 10)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    ctx =
+      Agent.new(question, repo: Repo, limit: limit)
+      |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+      |> maybe_rerank(reranker_concurrency, !skip_rerank)
+
+    chunks = extract_chunks(ctx)
+    prompt = build_ingredient_prompt(question, chunks, intent_info)
+
+    LLM.stream(prompt, on_chunk, opts)
   end
 
   defp handle_answer(%{answer: answer}) when not is_nil(answer) do
@@ -81,6 +118,9 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
         Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
     end
   end
+
+  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
+  defp extract_chunks(_), do: []
 
   defp build_ingredient_search_query(intent_info) do
     ingredients = intent_info.ingredients

@@ -52,6 +52,32 @@ defmodule LidlChef.RecipeAssistant do
     end
   end
 
+  @doc """
+  Ask a question about recipes and stream the response as it's generated.
+
+  Calls `on_chunk` for each streamed token.
+  """
+  @spec ask_stream(String.t(), (String.t() -> any()), keyword()) :: {:ok, String.t()} | {:error, term()}
+  def ask_stream(question, on_chunk, opts \\ []) when is_function(on_chunk, 1) do
+    with {:ok, intent_info} <- IntentClassifier.classify(question) do
+      Logger.debug("Intent classified: #{intent_info.intent})")
+
+      Logger.debug("  Ingredients: #{inspect(intent_info.ingredients)}")
+      Logger.debug("  Dietary: #{inspect(intent_info.dietary)}")
+
+      opts = configure_opts(intent_info, opts)
+
+      strategy_module = get_strategy_module(intent_info.intent)
+      Logger.debug("Delegating to strategy: #{inspect(strategy_module)}")
+
+      try do
+        strategy_module.run_stream(question, intent_info, on_chunk, opts)
+      rescue
+        e -> {:error, {:agent_error, Exception.message(e)}}
+      end
+    end
+  end
+
   defp get_strategy_module(:meal_planning), do: MealPlanner
   defp get_strategy_module(:ingredient_search), do: IngredientSearch
   defp get_strategy_module(:dietary_filter), do: DietarySearch
