@@ -24,7 +24,7 @@ defmodule LidlChef.Application do
       {Cachex, name: :recipe_search_cache},
       Arcana.TaskSupervisor,
       Arcana.Embedder.Local,
-      Arcana.Graph.NERServing,
+      # Arcana.Graph.NERServing, # Not needed - using LLM extractor instead
       LidlChefWeb.Endpoint
     ]
 
