@@ -57,6 +57,12 @@ defmodule LidlChefWeb.Layouts do
                 Home
               </.link>
               <.link
+                navigate="/products"
+                class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
+              >
+                Products
+              </.link>
+              <.link
                 navigate="/recipes"
                 class="px-4 py-2 text-base-content/70 hover:text-base-content hover:bg-base-200 rounded-lg transition-all text-sm font-medium"
               >
