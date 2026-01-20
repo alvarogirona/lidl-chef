@@ -24,6 +24,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/lidl_chef"
 import topbar from "../vendor/topbar"
+import { KnowledgeGraph } from "./knowledge_graph"
 
 // Custom hooks
 const ScrollToBottom = {
@@ -39,7 +40,8 @@ const ScrollToBottom = {
 }
 
 const Hooks = {
-  ScrollToBottom
+  ScrollToBottom,
+  KnowledgeGraph
 }
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
