@@ -87,20 +87,19 @@ defmodule LidlChef.Graph.ProductExtractor do
     - nutrient: Nutritional components or claims (e.g., "proteínas", "carbohidratos")
 
     ## Relationship types to extract:
+    - HAS_WAWI_ID: ProductErpName and ProductTitle entities can be linked to the same wawiId.
+    - HAS_BRAND: Product has a specific brand
+    - BRAND_OF: Brand is the brand of the product, inverse relationship of HAS_BRAND
+    - HAS_TITLE: ProductErpName relationship to ProductTitle
+    - HAS_ERP_NAME: ProductTitle entity has a specific erpName
     - CONTAINS_INGREDIENT: Product contains a specific ingredient
     - CONTAINS_ALLERGEN: Product contains an allergen (must declare)
+    - CONTAINS: General containment relationship
     - PRODUCED_IN: Product originates from a location
     - HAS_CERTIFICATION: Product has a certification/standard
     - BELONGS_TO_CATEGORY: Product belongs to a category
-    - IDENTIFIED_BY: Product identified by code/ID
     - HAS_NUTRIENT: Product contains nutritional component
-    - HAS_TITLE: Product has a specific title
-    - HAS_ERP_NAME: Product has a specific erpName
-    - BRAND_OF: Brand is the brand of the product
-    - HAS_BRAND: Product has a specific brand
-    - HAS_WAWI_ID: Product has a specific wawiId
     - RELATED_TO: General relationship between entities
-    - CONTAINS: General containment relationship
 
     ## Instructions:
     1. Extract the main product entity from the title
