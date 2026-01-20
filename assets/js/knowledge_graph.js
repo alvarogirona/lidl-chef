@@ -10,6 +10,8 @@ const KnowledgeGraph = {
   mounted() {
     this.graphData = null
     this.simulation = null
+    this.hiddenTypes = new Set() // Track hidden node types
+    this.rootNodeId = null // Track the main product node
     
     // Handle data from server
     this.handleEvent("graph-data", (data) => {
@@ -52,6 +54,30 @@ const KnowledgeGraph = {
       this.renderEmptyState()
       return
     }
+    
+    // Identify the root/main node (product with largest size or first product type)
+    if (!this.rootNodeId) {
+      const productNode = nodes.find(n => 
+        n.type === "product" || 
+        n.type === "producterpname" || 
+        n.type === "producttitle"
+      )
+      this.rootNodeId = productNode ? productNode.id : nodes[0].id
+    }
+    
+    // Filter nodes based on hidden types (but always show root node)
+    const filteredNodes = nodes.filter(n => 
+      n.id === this.rootNodeId || !this.hiddenTypes.has(n.type)
+    )
+    
+    const filteredNodeIds = new Set(filteredNodes.map(n => n.id))
+    
+    // Filter links to only include those between visible nodes
+    const filteredLinks = links.filter(l => {
+      const sourceId = typeof l.source === "object" ? l.source.id : l.source
+      const targetId = typeof l.target === "object" ? l.target.id : l.target
+      return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId)
+    })
     
     const container = this.el
     const width = container.clientWidth || 800
@@ -97,8 +123,8 @@ const KnowledgeGraph = {
       .range(["#0050AA", "#22c55e", "#ef4444", "#8b5cf6", "#f59e0b", "#06b6d4", "#ec4899", "#6b7280", "#84cc16", "#94a3b8"])
     
     // Create force simulation
-    this.simulation = d3.forceSimulation(nodes)
-      .force("link", d3.forceLink(links)
+    this.simulation = d3.forceSimulation(filteredNodes)
+      .force("link", d3.forceLink(filteredLinks)
         .id(d => d.id)
         .distance(100)
         .strength(0.5))
@@ -111,7 +137,7 @@ const KnowledgeGraph = {
     const link = g.append("g")
       .attr("class", "links")
       .selectAll("g")
-      .data(links)
+      .data(filteredLinks)
       .join("g")
     
     const linkLine = link.append("line")
@@ -133,7 +159,7 @@ const KnowledgeGraph = {
     const node = g.append("g")
       .attr("class", "nodes")
       .selectAll("g")
-      .data(nodes)
+      .data(filteredNodes)
       .join("g")
       .attr("class", "node")
       .call(this.drag(this.simulation))
@@ -171,7 +197,7 @@ const KnowledgeGraph = {
       const connectedNodeIds = new Set()
       connectedNodeIds.add(d.id)
       
-      links.forEach(l => {
+      filteredLinks.forEach(l => {
         const sourceId = typeof l.source === "object" ? l.source.id : l.source
         const targetId = typeof l.target === "object" ? l.target.id : l.target
         if (sourceId === d.id) connectedNodeIds.add(targetId)
@@ -226,9 +252,11 @@ const KnowledgeGraph = {
   },
   
   addLegend(svg, colorScale, width) {
+    const { nodes } = this.graphData
+    
     const legend = svg.append("g")
       .attr("class", "legend")
-      .attr("transform", `translate(${width - 140}, 20)`)
+      .attr("transform", `translate(${width - 160}, 20)`)
     
     const types = colorScale.domain()
     const typeLabels = {
@@ -244,33 +272,81 @@ const KnowledgeGraph = {
       "other": "Otro"
     }
     
+    // Count nodes by type
+    const typeCounts = {}
+    nodes.forEach(n => {
+      const type = n.type || "other"
+      typeCounts[type] = (typeCounts[type] || 0) + 1
+    })
+    
+    // Filter to only show types that exist in the data
+    const existingTypes = types.filter(t => typeCounts[t] > 0)
+    
     // Background
     legend.append("rect")
       .attr("x", -10)
       .attr("y", -10)
-      .attr("width", 130)
-      .attr("height", types.length * 20 + 20)
+      .attr("width", 150)
+      .attr("height", existingTypes.length * 24 + 20)
       .attr("fill", "white")
       .attr("stroke", "#e2e8f0")
       .attr("rx", 8)
       .attr("opacity", 0.95)
     
     const items = legend.selectAll(".legend-item")
-      .data(types)
+      .data(existingTypes)
       .join("g")
       .attr("class", "legend-item")
-      .attr("transform", (d, i) => `translate(0, ${i * 20})`)
+      .attr("transform", (d, i) => `translate(0, ${i * 24})`)
+      .style("cursor", "pointer")
+      .on("click", (event, type) => {
+        event.stopPropagation()
+        this.toggleType(type)
+      })
+    
+    // Add hover effect
+    items.on("mouseenter", function() {
+      d3.select(this).select("rect.hover-bg")
+        .attr("opacity", 0.1)
+    })
+    .on("mouseleave", function() {
+      d3.select(this).select("rect.hover-bg")
+        .attr("opacity", 0)
+    })
+    
+    // Hover background
+    items.append("rect")
+      .attr("class", "hover-bg")
+      .attr("x", -5)
+      .attr("y", -10)
+      .attr("width", 140)
+      .attr("height", 20)
+      .attr("fill", "#0050AA")
+      .attr("rx", 4)
+      .attr("opacity", 0)
     
     items.append("circle")
       .attr("r", 6)
       .attr("fill", d => colorScale(d))
+      .attr("opacity", d => this.hiddenTypes.has(d) ? 0.3 : 1)
     
     items.append("text")
       .attr("x", 12)
       .attr("y", 4)
       .attr("font-size", "11px")
       .attr("fill", "#475569")
-      .text(d => typeLabels[d] || d)
+      .attr("opacity", d => this.hiddenTypes.has(d) ? 0.5 : 1)
+      .attr("text-decoration", d => this.hiddenTypes.has(d) ? "line-through" : "none")
+      .text(d => `${typeLabels[d] || d} (${typeCounts[d] || 0})`)
+  },
+  
+  toggleType(type) {
+    if (this.hiddenTypes.has(type)) {
+      this.hiddenTypes.delete(type)
+    } else {
+      this.hiddenTypes.add(type)
+    }
+    this.renderGraph()
   },
   
   drag(simulation) {
