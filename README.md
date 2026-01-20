@@ -16,11 +16,17 @@ LM Studio allows to easily download and run local AI models on your machine. To 
 brew install --cask lm-studio
 ```
 
-#### Downloading required models
+When running LM Studio for the first time, select developer as your user profile, so the models can be served by a local API.
+
+#### Download required models
 
 The server requires the following models to be downloaded in LM Studio (you might need to disable ZScaler Internet Secutiry temporary):
 - `qwen3-reranker-0.6b` (published by `ggml-org`)
 - `qwen/qwen3-4b-2507` (published by `qwen`)
+
+#### Serve the models in an API
+
+In LM Studio, under the developer sidebar menu section, you have to enable the local server by toggling the switch at the top.
 
 ### PostgreSQL with pg_vector
 
