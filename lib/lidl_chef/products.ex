@@ -40,6 +40,7 @@ defmodule LidlChef.Products do
     metadata = %{
       "wawi_id" => product.wawi_id,
       "title" => product.title,
+      "erpName" => product.erpName,
       "product_line" => product.product_line,
       "bullet_points" => Enum.join(product.bullet_points || [], "\n")
     }
@@ -49,87 +50,8 @@ defmodule LidlChef.Products do
       collection: @collection,
       metadata: metadata,
       graph: enable_graph,
-      prompt: build_product_extraction_prompt(content)
+      extractor: {LidlChef.Graph.ProductExtractor, []}
     )
-  end
-
-  @doc """
-  Builds a custom extraction prompt for product catalog entities and relationships.
-
-  Focuses on extracting:
-  - Product entity (name/title)
-  - Brand information
-  - Ingredients
-  - Allergens
-  - Origin (country/region)
-  - Product identifiers (Wawi ID)
-  - Nutritional information
-  - Certifications (e.g., RSPO, organic)
-  """
-  @spec build_product_extraction_prompt(String.t()) :: String.t()
-  def build_product_extraction_prompt(text) do
-    """
-    Extrae las entidades y relaciones del siguiente texto de un producto de Lidl.
-
-    ## Text to analyze:
-    #{text}
-
-    ## Entity types for product catalog:
-    - product: The main product name/title (e.g., "Croissant brioche", "Ensalada de pasta rúcula")
-    - brand: Brand or manufacturer name if mentioned
-    - ingredient: Individual ingredients (e.g., "harina de trigo", "azúcar", "aceite de girasol")
-    - allergen: Allergens present in the product (e.g., "gluten", "leche", "huevos", "frutos de cáscara")
-    - origin: Geographic origin or production location (e.g., "España", "Andalucía")
-    - certification: Certifications or quality standards (e.g., "RSPO", "Ecológico", "ISO")
-    - category: Product category or line (e.g., "Food", "Bakery", "Fresh")
-    - identifier: Internal product codes or identifiers (e.g., Wawi ID)
-    - nutrient: Nutritional components or claims (e.g., "proteínas", "carbohidratos")
-
-    ## Relationship types to extract:
-    - CONTAINS_INGREDIENT: Product contains a specific ingredient
-    - CONTAINS_ALLERGEN: Product contains an allergen (must declare)
-    - PRODUCED_IN: Product originates from a location
-    - HAS_CERTIFICATION: Product has a certification/standard
-    - BELONGS_TO_CATEGORY: Product belongs to a category
-    - IDENTIFIED_BY: Product identified by code/ID
-    - HAS_NUTRIENT: Product contains nutritional component
-
-    ## Instructions:
-    1. Extract the main product entity from the title
-    2. Identify all ingredients mentioned (especially in INGREDIENTES section)
-    3. Extract allergens (in ALÉRGENOS section or allergen warnings)
-    4. Look for origin information (country, region, production location)
-    5. Extract certifications (RSPO, organic labels, quality standards)
-    6. Identify the product category/line
-    7. Extract the Wawi ID or other identifiers
-    8. Create relationships showing how entities connect
-    9. Use strength 9-10 for explicit relationships (contains allergen, has ingredient)
-    10. Use strength 6-8 for contextual relationships (produced in, belongs to category)
-
-    ## Important Spanish terms to recognize:
-    - "INGREDIENTES" = ingredients list
-    - "ALÉRGENOS" = allergens
-    - "contiene" = contains
-    - "puede contener" = may contain
-    - "sin" = without
-    - "procedente de" = from/originating from
-
-    ## Output format:
-    Return a JSON object with two arrays:
-
-    ```json
-    {
-      "entities": [
-        {"name": "Entity Name", "type": "type", "description": "Brief context"}
-      ],
-      "relationships": [
-        {"source": "Source Entity", "target": "Target Entity", "type": "RELATIONSHIP_TYPE", "description": "Brief description", "strength": 9}
-      ]
-    }
-    ```
-
-    Return only the JSON object, no other text.
-    """
   end
 
   defp format_product_for_embedding(product) do
@@ -139,12 +61,15 @@ defmodule LidlChef.Products do
       |> Enum.join("\n")
 
     """
-    Product: #{product.title}
+    Product ERP name: #{product.erpName}
+
+    Product title: #{product.title}
 
     Product Line: #{product.product_line}
 
     #{if bullet_points_text != "", do: "Details:\n#{bullet_points_text}\n", else: ""}
-    Internal ID: #{product.wawi_id}
+
+    wawi_id: #{product.wawi_id}
     """
   end
 

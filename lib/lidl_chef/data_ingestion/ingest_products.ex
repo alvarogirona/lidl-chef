@@ -61,18 +61,20 @@ defmodule LidlChef.DataIngestion.IngestProducts do
     texts = Map.get(product_data, "texts", %{})
     es_texts = Map.get(texts, "es", %{})
     title = Map.get(es_texts, "title")
+    erpName = Map.get(es_texts, "erpName")
     bullet_points = Map.get(es_texts, "bulletPoints", [])
 
     # Skip products without essential data
-    if wawi_id && title do
+    if wawi_id && title && erpName do
       %{
         wawi_id: wawi_id,
         title: title,
+        erpName: erpName,
         bullet_points: bullet_points,
         product_line: product_line
       }
     else
-      Logger.warning("Skipping product with missing wawi_id or title: #{inspect(wawi_id)}")
+      Logger.warning("Skipping product with missing wawi_id, title, or erpName: #{inspect(wawi_id)}")
       nil
     end
   end
