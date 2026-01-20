@@ -166,10 +166,20 @@ defmodule LidlChefWeb.ProductDetailLive do
       end)
       |> Enum.reject(&is_nil/1)
 
-    # Now get secondary relationships (relationships of connected entities)
-    # This gives us a 2-level deep graph
-    secondary_relationships =
+    # Filter entities that should NOT be traversed further to avoid graph explosion
+    # Categories, brands, and other high-connectivity nodes should not expand
+    traversable_entities =
       connected_entities
+      |> Enum.reject(fn entity ->
+        type = normalize_type(entity.type)
+        # Don't traverse from categories, brands, or other hub nodes
+        type in ["category", "brand", "productline"]
+      end)
+
+    # Now get secondary relationships (relationships of connected entities)
+    # Only for traversable entities to avoid pulling in hundreds of unrelated nodes
+    secondary_relationships =
+      traversable_entities
       |> Enum.flat_map(fn entity ->
         GraphStore.get_relationships(entity.id, repo: Repo)
       end)
