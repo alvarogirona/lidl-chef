@@ -258,7 +258,6 @@ const KnowledgeGraph = {
       .attr("class", "legend")
       .attr("transform", `translate(${width - 160}, 20)`)
     
-    const types = colorScale.domain()
     const typeLabels = {
       "product": "Producto",
       "ingredient": "Ingrediente",
@@ -269,18 +268,21 @@ const KnowledgeGraph = {
       "category": "Categoría",
       "identifier": "ID",
       "nutrient": "Nutriente",
+      "producterpname": "Nombre ERP",
+      "producttitle": "Título",
+      "wawiid": "Wawi ID",
+      "productline": "Línea",
       "other": "Otro"
     }
     
-    // Count nodes by type
+    // Get unique types from current graph nodes
     const typeCounts = {}
     nodes.forEach(n => {
       const type = n.type || "other"
       typeCounts[type] = (typeCounts[type] || 0) + 1
     })
     
-    // Filter to only show types that exist in the data
-    const existingTypes = types.filter(t => typeCounts[t] > 0)
+    const existingTypes = Object.keys(typeCounts).sort()
     
     // Background
     legend.append("rect")
@@ -337,7 +339,10 @@ const KnowledgeGraph = {
       .attr("fill", "#475569")
       .attr("opacity", d => this.hiddenTypes.has(d) ? 0.5 : 1)
       .attr("text-decoration", d => this.hiddenTypes.has(d) ? "line-through" : "none")
-      .text(d => `${typeLabels[d] || d} (${typeCounts[d] || 0})`)
+      .text(d => {
+        const label = typeLabels[d] || d
+        return `${label} (${typeCounts[d]})`
+      })
   },
   
   toggleType(type) {
