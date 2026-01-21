@@ -30,6 +30,7 @@ defmodule LidlChefWeb.Router do
     live "/chat", ChefChatLive
     live "/products", ProductSearchLive
     live "/products/:wawi_id", ProductDetailLive
+    live "/graph/:entity_id", GraphDetailLive
   end
 
   # Other scopes may use custom stacks.

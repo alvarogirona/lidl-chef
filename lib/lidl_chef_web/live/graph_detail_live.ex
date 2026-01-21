@@ -1,4 +1,4 @@
-defmodule LidlChefWeb.ProductDetailLive do
+defmodule LidlChefWeb.GraphDetailLive do
   use LidlChefWeb, :live_view
 
   alias Arcana.Graph.GraphStore
@@ -7,154 +7,48 @@ defmodule LidlChefWeb.ProductDetailLive do
   import Ecto.Query
 
   @impl true
-  def mount(%{"wawi_id" => wawi_id}, _session, socket) do
+  def mount(%{"entity_id" => entity_id}, _session, socket) do
     {:ok,
      socket
-     |> assign(:wawi_id, wawi_id)
-     |> assign(:product, nil)
+     |> assign(:entity_id, entity_id)
+     |> assign(:entity, nil)
      |> assign(:graph_data, nil)
      |> assign(:loading, true)
      |> assign(:error, nil)
      |> assign(:depth, 2)
      |> assign(:selected_node, nil)
      |> assign(:selected_node_relationships, [])
-     |> load_product_and_graph()}
+     |> load_entity_and_graph()}
   end
 
-  defp load_product_and_graph(socket) do
-    wawi_id = socket.assigns.wawi_id
+  defp load_entity_and_graph(socket) do
+    entity_id = socket.assigns.entity_id
     depth = socket.assigns.depth
 
-    # Find the product document by wawi_id in metadata
-    case find_product_by_wawi_id(wawi_id) do
-      {:ok, product} ->
-        # Build the graph data for this product with specified depth
-        graph_data = build_graph_data(product, wawi_id, depth)
+    # Fetch the entity by ID
+    case GraphStore.get_entity(entity_id, repo: Repo) do
+      {:ok, entity} ->
+        # Build the graph data for this entity with specified depth
+        graph_data = build_graph_data(entity, depth)
 
         socket
-        |> assign(:product, product)
+        |> assign(:entity, entity)
         |> assign(:graph_data, graph_data)
         |> assign(:loading, false)
 
-      {:error, :not_found} ->
+      {:error, _} ->
         socket
         |> assign(:loading, false)
-        |> assign(:error, "Producto no encontrado con Wawi ID: #{wawi_id}")
+        |> assign(:error, "Entidad no encontrada con ID: #{entity_id}")
     end
   end
 
-  defp find_product_by_wawi_id(wawi_id) do
-    query =
-      from d in Arcana.Document,
-        join: c in Arcana.Collection,
-        on: d.collection_id == c.id,
-        where: c.name == "products",
-        where: fragment("?->>'wawi_id' = ?", d.metadata, ^wawi_id),
-        limit: 1
-
-    case Repo.one(query) do
-      nil -> {:error, :not_found}
-      doc -> {:ok, doc}
-    end
-  end
-
-  defp build_graph_data(product, wawi_id, depth) do
-    # Get the product title from metadata
-    product_title = product.metadata["title"] || product.metadata["erpName"]
-    collection_id = get_products_collection_id()
-
-    if is_nil(collection_id) do
-      minimal_graph(product_title, wawi_id)
-    else
-      # Strategy: Find the wawiId entity and traverse relationships
-      case find_wawi_entity(wawi_id, collection_id) do
-        nil ->
-          # Fallback: try to find the product by title
-          case find_product_entity(product_title, collection_id) do
-            nil -> minimal_graph(product_title, wawi_id)
-            product_entity -> build_graph_from_entity(product_entity, product_title, wawi_id, depth)
-          end
-
-        wawi_entity ->
-          # Find the product entity connected to this wawiId
-          build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id, depth)
-      end
-    end
-  end
-
-  defp minimal_graph(product_title, wawi_id) do
-    %{
-      nodes: [
-        %{
-          id: "product_#{wawi_id}",
-          name: product_title || "Producto #{wawi_id}",
-          type: "product",
-          description: "Wawi ID: #{wawi_id}"
-        }
-      ],
-      links: []
-    }
-  end
-
-  defp find_wawi_entity(wawi_id, collection_id) do
-    # Find entity with type wawiid and name matching the wawi_id
-    GraphStore.list_entities(
-      repo: Repo,
-      collection_id: collection_id,
-      type: "wawiid",
-      search: wawi_id,
-      limit: 1
-    )
-    |> List.first()
-  end
-
-  defp find_product_entity(product_title, collection_id) when is_binary(product_title) do
-    # Try to find by producterpname or producttitle
-    GraphStore.list_entities(
-      repo: Repo,
-      collection_id: collection_id,
-      search: product_title,
-      limit: 10
-    )
-    |> Enum.find(fn e ->
-      type = normalize_type(e.type)
-      type in ["producterpname", "producttitle", "product"] &&
-        String.downcase(e.name || "") == String.downcase(product_title)
-    end)
-  end
-
-  defp find_product_entity(_, _), do: nil
-
-  defp build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id, depth) do
-    # Get relationships from the wawiId entity
-    wawi_relationships = GraphStore.get_relationships(wawi_entity.id, repo: Repo)
-
-    # Find the product entity connected via HAS_WAWI_ID
-    product_entity =
-      wawi_relationships
-      |> Enum.find_value(fn rel ->
-        if rel.type == "HAS_WAWI_ID" do
-          case GraphStore.get_entity(rel.source_id, repo: Repo) do
-            {:ok, entity} -> entity
-            _ -> nil
-          end
-        end
-      end)
-
-    if product_entity do
-      build_graph_from_entity(product_entity, product_title, wawi_id, depth)
-    else
-      # Build graph starting from wawi_entity
-      build_graph_from_entity(wawi_entity, product_title, wawi_id, depth)
-    end
-  end
-
-  defp build_graph_from_entity(root_entity, product_title, wawi_id, depth) do
+  defp build_graph_data(root_entity, depth) do
     # Traverse relationships up to the specified depth
     {all_entities, all_relationships} = traverse_graph(root_entity, depth, MapSet.new(), [])
 
     # Build the final graph
-    build_graph(all_entities, all_relationships, product_title, wawi_id)
+    build_graph(all_entities, all_relationships, root_entity)
   end
 
   defp traverse_graph(_entity, 0, _visited, relationships) do
@@ -223,7 +117,7 @@ defmodule LidlChefWeb.ProductDetailLive do
     end
   end
 
-  defp build_graph(entities, relationships, product_title, wawi_id) do
+  defp build_graph(entities, relationships, root_entity) do
     # Build nodes from entities
     nodes =
       entities
@@ -235,27 +129,6 @@ defmodule LidlChefWeb.ProductDetailLive do
           description: entity.description
         }
       end)
-
-    # Ensure we have a product node if none exists
-    product_node_exists =
-      Enum.any?(nodes, fn n ->
-        n.type in ["product", "producterpname", "producttitle"]
-      end)
-
-    nodes =
-      if product_node_exists do
-        nodes
-      else
-        [
-          %{
-            id: "product_#{wawi_id}",
-            name: product_title || "Producto #{wawi_id}",
-            type: "product",
-            description: "Wawi ID: #{wawi_id}"
-          }
-          | nodes
-        ]
-      end
 
     # Build links from relationships
     node_ids = MapSet.new(Enum.map(nodes, & &1.id))
@@ -275,12 +148,7 @@ defmodule LidlChefWeb.ProductDetailLive do
         }
       end)
 
-    %{nodes: nodes, links: links}
-  end
-
-  defp get_products_collection_id do
-    query = from c in Arcana.Collection, where: c.name == "products", select: c.id
-    Repo.one(query)
+    %{nodes: nodes, links: links, root_id: root_entity.id}
   end
 
   defp normalize_type(nil), do: "other"
@@ -346,7 +214,7 @@ defmodule LidlChefWeb.ProductDetailLive do
       socket
       |> assign(:depth, depth)
       |> assign(:loading, true)
-      |> load_product_and_graph()
+      |> load_entity_and_graph()
 
     # Push the new graph data to the JS hook since phx-update="ignore" prevents automatic updates
     {:noreply, push_event(socket, "graph-data", socket.assigns.graph_data)}
@@ -370,23 +238,23 @@ defmodule LidlChefWeb.ProductDetailLive do
 
             <div :if={@loading} class="flex items-center gap-3">
               <div class="loading loading-spinner loading-md"></div>
-              <span class="text-base-content/60">Cargando producto...</span>
+              <span class="text-base-content/60">Cargando entidad...</span>
             </div>
 
             <div :if={@error && !@loading} class="bg-error/10 border border-error/20 rounded-xl p-4">
               <p class="text-error">{@error}</p>
             </div>
 
-            <div :if={@product && !@loading}>
+            <div :if={@entity && !@loading}>
               <h1 class="text-2xl sm:text-3xl font-bold text-base-content mb-2">
-                {@product.metadata["title"] || "Producto"}
+                {@entity.name || "Entidad"}
               </h1>
               <div class="flex items-center gap-3 flex-wrap">
                 <span class="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-[#0050AA]/10 text-[#0050AA]">
-                  {@product.metadata["product_line"] || "Producto"}
+                  {normalize_type(@entity.type)}
                 </span>
-                <span class="text-base-content/60 text-sm">
-                  Wawi ID: {@wawi_id}
+                <span :if={@entity.description} class="text-base-content/60 text-sm">
+                  {@entity.description}
                 </span>
               </div>
             </div>
@@ -394,7 +262,7 @@ defmodule LidlChefWeb.ProductDetailLive do
         </div>
 
         <%!-- Graph Section with Detail Card --%>
-        <div :if={@product && !@loading} class="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
+        <div :if={@entity && !@loading} class="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
           <div class="relative">
             <%!-- Selected Node Detail Card --%>
             <div
@@ -468,7 +336,7 @@ defmodule LidlChefWeb.ProductDetailLive do
                   <div>
                     <h2 class="font-semibold text-base-content">Grafo de Conocimiento</h2>
                     <p class="text-sm text-base-content/60">
-                      Visualización de entidades y relaciones del producto
+                      Visualización de entidades y relaciones
                     </p>
                   </div>
                   <div class="flex items-center gap-2 text-sm text-base-content/60">
@@ -517,21 +385,6 @@ defmodule LidlChefWeb.ProductDetailLive do
                 class="w-full h-[600px] bg-gradient-to-br from-base-100 to-base-200/30"
               >
               </div>
-            </div>
-          </div>
-
-          <%!-- Product Details Card --%>
-          <div class="mt-6 bg-base-100 border border-base-300 rounded-2xl p-6">
-            <h3 class="font-semibold text-base-content mb-4">Detalles del Producto</h3>
-
-            <div :if={@product.metadata["bullet_points"]} class="prose prose-sm max-w-none">
-              <div class="text-base-content/80 whitespace-pre-wrap text-sm">
-                {@product.metadata["bullet_points"]}
-              </div>
-            </div>
-
-            <div :if={!@product.metadata["bullet_points"]} class="text-base-content/60 text-sm">
-              No hay detalles adicionales disponibles para este producto.
             </div>
           </div>
 
