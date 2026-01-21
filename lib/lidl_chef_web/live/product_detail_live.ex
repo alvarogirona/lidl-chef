@@ -15,17 +15,19 @@ defmodule LidlChefWeb.ProductDetailLive do
      |> assign(:graph_data, nil)
      |> assign(:loading, true)
      |> assign(:error, nil)
+     |> assign(:depth, 2)
      |> load_product_and_graph()}
   end
 
   defp load_product_and_graph(socket) do
     wawi_id = socket.assigns.wawi_id
+    depth = socket.assigns.depth
 
     # Find the product document by wawi_id in metadata
     case find_product_by_wawi_id(wawi_id) do
       {:ok, product} ->
-        # Build the graph data for this product
-        graph_data = build_graph_data(product, wawi_id)
+        # Build the graph data for this product with specified depth
+        graph_data = build_graph_data(product, wawi_id, depth)
 
         socket
         |> assign(:product, product)
@@ -54,7 +56,7 @@ defmodule LidlChefWeb.ProductDetailLive do
     end
   end
 
-  defp build_graph_data(product, wawi_id) do
+  defp build_graph_data(product, wawi_id, depth) do
     # Get the product title from metadata
     product_title = product.metadata["title"] || product.metadata["erpName"]
     collection_id = get_products_collection_id()
@@ -68,12 +70,12 @@ defmodule LidlChefWeb.ProductDetailLive do
           # Fallback: try to find the product by title
           case find_product_entity(product_title, collection_id) do
             nil -> minimal_graph(product_title, wawi_id)
-            product_entity -> build_graph_from_entity(product_entity, product_title, wawi_id)
+            product_entity -> build_graph_from_entity(product_entity, product_title, wawi_id, depth)
           end
 
         wawi_entity ->
           # Find the product entity connected to this wawiId
-          build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id)
+          build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id, depth)
       end
     end
   end
@@ -121,7 +123,7 @@ defmodule LidlChefWeb.ProductDetailLive do
 
   defp find_product_entity(_, _), do: nil
 
-  defp build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id) do
+  defp build_graph_from_wawi_entity(wawi_entity, product_title, wawi_id, depth) do
     # Get relationships from the wawiId entity
     wawi_relationships = GraphStore.get_relationships(wawi_entity.id, repo: Repo)
 
@@ -138,79 +140,85 @@ defmodule LidlChefWeb.ProductDetailLive do
       end)
 
     if product_entity do
-      build_graph_from_entity(product_entity, product_title, wawi_id)
+      build_graph_from_entity(product_entity, product_title, wawi_id, depth)
     else
       # Build graph starting from wawi_entity
-      build_graph_from_entity(wawi_entity, product_title, wawi_id)
+      build_graph_from_entity(wawi_entity, product_title, wawi_id, depth)
     end
   end
 
-  defp build_graph_from_entity(root_entity, product_title, wawi_id) do
-    # Get all relationships for the root entity
-    relationships = GraphStore.get_relationships(root_entity.id, repo: Repo)
+  defp build_graph_from_entity(root_entity, product_title, wawi_id, depth) do
+    # Traverse relationships up to the specified depth
+    {all_entities, all_relationships} = traverse_graph(root_entity, depth, MapSet.new(), [])
 
-    # Collect all connected entity IDs
-    connected_ids =
-      relationships
-      |> Enum.flat_map(fn rel -> [rel.source_id, rel.target_id] end)
-      |> Enum.uniq()
+    # Build the final graph
+    build_graph(all_entities, all_relationships, product_title, wawi_id)
+  end
 
-    # Fetch all connected entities
-    connected_entities =
-      connected_ids
-      |> Enum.map(fn id ->
-        case GraphStore.get_entity(id, repo: Repo) do
-          {:ok, entity} -> entity
-          _ -> nil
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
+  defp traverse_graph(_entity, 0, _visited, relationships) do
+    # Depth limit reached
+    {[], relationships}
+  end
 
-    # Filter entities that should NOT be traversed further to avoid graph explosion
-    # Categories, brands, and other high-connectivity nodes should not expand
-    traversable_entities =
-      connected_entities
-      |> Enum.reject(fn entity ->
-        type = normalize_type(entity.type)
-        # Don't traverse from categories, brands, or other hub nodes
-        type in ["category", "brand", "productline"]
-      end)
+  defp traverse_graph(entity, depth, visited, relationships) do
+    entity_id = entity.id
 
-    # Now get secondary relationships (relationships of connected entities)
-    # Only for traversable entities to avoid pulling in hundreds of unrelated nodes
-    secondary_relationships =
-      traversable_entities
-      |> Enum.flat_map(fn entity ->
-        GraphStore.get_relationships(entity.id, repo: Repo)
-      end)
-      |> Enum.uniq_by(& &1.id)
+    # Skip if already visited
+    if MapSet.member?(visited, entity_id) do
+      {[entity], relationships}
+    else
+      visited = MapSet.put(visited, entity_id)
 
-    # Collect all entity IDs from secondary relationships
-    all_entity_ids =
-      (relationships ++ secondary_relationships)
-      |> Enum.flat_map(fn rel -> [rel.source_id, rel.target_id] end)
-      |> Enum.uniq()
+      # Get relationships for this entity
+      entity_relationships = GraphStore.get_relationships(entity_id, repo: Repo)
+      all_relationships = relationships ++ entity_relationships
 
-    # Fetch any missing entities
-    all_entities =
-      all_entity_ids
-      |> Enum.map(fn id ->
-        existing = Enum.find(connected_entities, fn e -> e.id == id end)
+      # Get connected entity IDs
+      connected_ids =
+        entity_relationships
+        |> Enum.flat_map(fn rel -> [rel.source_id, rel.target_id] end)
+        |> Enum.uniq()
+        |> Enum.reject(&(&1 == entity_id))
 
-        if existing do
-          existing
-        else
+      # Fetch connected entities
+      connected_entities =
+        connected_ids
+        |> Enum.map(fn id ->
           case GraphStore.get_entity(id, repo: Repo) do
             {:ok, entity} -> entity
             _ -> nil
           end
-        end
-      end)
-      |> Enum.reject(&is_nil/1)
-      |> Enum.uniq_by(& &1.id)
+        end)
+        |> Enum.reject(&is_nil/1)
 
-    # Build the final graph
-    build_graph(all_entities, relationships ++ secondary_relationships, product_title, wawi_id)
+      # Filter entities that should NOT be traversed further
+      traversable_entities =
+        connected_entities
+        |> Enum.reject(fn e ->
+          type = normalize_type(e.type)
+          # Don't traverse from categories, brands, or other hub nodes
+          type in ["category", "brand", "productline"]
+        end)
+
+      # Recursively traverse (depth - 1) for traversable entities
+      {nested_entities, nested_relationships} =
+        if depth > 1 do
+          traversable_entities
+          |> Enum.reduce({[], all_relationships}, fn e, {entities_acc, rels_acc} ->
+            {new_entities, new_rels} = traverse_graph(e, depth - 1, visited, rels_acc)
+            {entities_acc ++ new_entities, new_rels}
+          end)
+        else
+          {[], all_relationships}
+        end
+
+      # Combine all entities (current + connected + nested)
+      all_entities =
+        ([entity] ++ connected_entities ++ nested_entities)
+        |> Enum.uniq_by(& &1.id)
+
+      {all_entities, nested_relationships}
+    end
   end
 
   defp build_graph(entities, relationships, product_title, wawi_id) do
@@ -285,6 +293,19 @@ defmodule LidlChefWeb.ProductDetailLive do
      |> put_flash(:info, "Nodo seleccionado: #{name} (#{type})")}
   end
 
+  def handle_event("change-depth", %{"depth" => depth_str}, socket) do
+    depth = String.to_integer(depth_str)
+
+    socket =
+      socket
+      |> assign(:depth, depth)
+      |> assign(:loading, true)
+      |> load_product_and_graph()
+
+    # Push the new graph data to the JS hook since phx-update="ignore" prevents automatic updates
+    {:noreply, push_event(socket, "graph-data", socket.assigns.graph_data)}
+  end
+
   @impl true
   def render(assigns) do
     ~H"""
@@ -329,20 +350,48 @@ defmodule LidlChefWeb.ProductDetailLive do
         <%!-- Graph Section --%>
         <div :if={@product && !@loading} class="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
           <div class="bg-base-100 border border-base-300 rounded-2xl overflow-hidden shadow-sm">
-            <div class="p-4 border-b border-base-200 flex items-center justify-between">
-              <div>
-                <h2 class="font-semibold text-base-content">Grafo de Conocimiento</h2>
-                <p class="text-sm text-base-content/60">
-                  Visualización de entidades y relaciones del producto
-                </p>
+            <div class="p-4 border-b border-base-200">
+              <div class="flex items-center justify-between mb-4">
+                <div>
+                  <h2 class="font-semibold text-base-content">Grafo de Conocimiento</h2>
+                  <p class="text-sm text-base-content/60">
+                    Visualización de entidades y relaciones del producto
+                  </p>
+                </div>
+                <div class="flex items-center gap-2 text-sm text-base-content/60">
+                  <span>
+                    {length(@graph_data.nodes)} nodos
+                  </span>
+                  <span>•</span>
+                  <span>
+                    {length(@graph_data.links)} relaciones
+                  </span>
+                </div>
               </div>
-              <div class="flex items-center gap-2 text-sm text-base-content/60">
-                <span>
-                  {length(@graph_data.nodes)} nodos
-                </span>
-                <span>•</span>
-                <span>
-                  {length(@graph_data.links)} relaciones
+
+              <%!-- Depth Control --%>
+              <div class="flex items-center gap-3">
+                <label class="text-sm font-medium text-base-content/70">
+                  Profundidad del grafo:
+                </label>
+                <div class="flex items-center gap-2">
+                  <button
+                    :for={depth_option <- [1, 2, 3, 4]}
+                    phx-click="change-depth"
+                    phx-value-depth={depth_option}
+                    class={[
+                      "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+                      if(@depth == depth_option,
+                        do: "bg-[#0050AA] text-white",
+                        else: "bg-base-200 text-base-content/70 hover:bg-base-300"
+                      )
+                    ]}
+                  >
+                    {depth_option}
+                  </button>
+                </div>
+                <span class="text-xs text-base-content/50 ml-2">
+                  (niveles de relación)
                 </span>
               </div>
             </div>
