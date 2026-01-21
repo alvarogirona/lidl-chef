@@ -40,7 +40,7 @@ defmodule LidlChef.MixProject do
   # Type `mix help deps` for examples and options.
   defp deps do
     [
-      {:arcana, "~> 1.0"},
+      {:arcana, "~> 1.3.3"},
       {:exla, "~> 0.9"},
       {:phoenix, "~> 1.8.3"},
       {:phoenix_ecto, "~> 4.5"},
