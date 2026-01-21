@@ -7,11 +7,12 @@ defmodule LidlChefWeb.GraphDetailLive do
   import Ecto.Query
 
   @impl true
-  def mount(%{"entity_id" => entity_id}, _session, socket) do
+  def mount(%{"entity_id" => id_param}, _session, socket) do
     {:ok,
      socket
-     |> assign(:entity_id, entity_id)
+     |> assign(:id_param, id_param)
      |> assign(:entity, nil)
+     |> assign(:product, nil)
      |> assign(:graph_data, nil)
      |> assign(:loading, true)
      |> assign(:error, nil)
@@ -22,25 +23,121 @@ defmodule LidlChefWeb.GraphDetailLive do
   end
 
   defp load_entity_and_graph(socket) do
-    entity_id = socket.assigns.entity_id
+    id_param = socket.assigns.id_param
     depth = socket.assigns.depth
 
-    # Fetch the entity by ID
-    case GraphStore.get_entity(entity_id, repo: Repo) do
-      {:ok, entity} ->
+    # Detect if this is a wawi_id (numeric) or entity_id (UUID)
+    entity_result =
+      if String.match?(id_param, ~r/^\d+$/), do: find_entity_by_wawi_id(id_param), else: find_entity_by_id(id_param)
+
+    case entity_result do
+      {:ok, entity, product} ->
         # Build the graph data for this entity with specified depth
         graph_data = build_graph_data(entity, depth)
 
         socket
         |> assign(:entity, entity)
+        |> assign(:product, product)
         |> assign(:graph_data, graph_data)
         |> assign(:loading, false)
 
-      {:error, _} ->
+      {:error, reason} ->
         socket
         |> assign(:loading, false)
-        |> assign(:error, "Entidad no encontrada con ID: #{entity_id}")
+        |> assign(:error, reason)
     end
+  end
+
+  defp find_entity_by_id(entity_id) do
+    # Direct entity lookup
+    case GraphStore.get_entity(entity_id, repo: Repo) do
+      {:ok, entity} -> {:ok, entity, nil}
+      {:error, _} -> {:error, "Entidad no encontrada con ID: #{entity_id}"}
+    end
+  end
+
+  defp find_entity_by_wawi_id(wawi_id) do
+    # First find the product document
+    query =
+      from d in Arcana.Document,
+        join: c in Arcana.Collection,
+        on: d.collection_id == c.id,
+        where: c.name == "products",
+        where: fragment("?->>'wawi_id' = ?", d.metadata, ^wawi_id),
+        limit: 1
+
+    product = Repo.one(query)
+
+    if product do
+      # Find the product entity in the graph
+      collection_id = get_products_collection_id()
+      product_title = product.metadata["title"] || product.metadata["erpName"]
+
+      # Try to find via wawiid entity first
+      case find_wawi_entity(wawi_id, collection_id) do
+        nil ->
+          # Fallback: find by product title
+          case find_product_entity(product_title, collection_id) do
+            nil -> {:error, "Entidad no encontrada en el grafo para Wawi ID: #{wawi_id}"}
+            entity -> {:ok, entity, product}
+          end
+
+        wawi_entity ->
+          # Find the product entity connected to this wawiId
+          case find_product_from_wawi_entity(wawi_entity) do
+            nil -> {:ok, wawi_entity, product}
+            product_entity -> {:ok, product_entity, product}
+          end
+      end
+    else
+      {:error, "Producto no encontrado con Wawi ID: #{wawi_id}"}
+    end
+  end
+
+  defp find_wawi_entity(wawi_id, collection_id) do
+    GraphStore.list_entities(
+      repo: Repo,
+      collection_id: collection_id,
+      type: "wawiid",
+      search: wawi_id,
+      limit: 1
+    )
+    |> List.first()
+  end
+
+  defp find_product_entity(product_title, collection_id) when is_binary(product_title) do
+    GraphStore.list_entities(
+      repo: Repo,
+      collection_id: collection_id,
+      search: product_title,
+      limit: 10
+    )
+    |> Enum.find(fn e ->
+      type = normalize_type(e.type)
+      type in ["producterpname", "producttitle", "product"] &&
+        String.downcase(e.name || "") == String.downcase(product_title)
+    end)
+  end
+
+  defp find_product_entity(_, _), do: nil
+
+  defp find_product_from_wawi_entity(wawi_entity) do
+    wawi_relationships = GraphStore.get_relationships(wawi_entity.id, repo: Repo)
+
+    wawi_relationships
+    |> Enum.find_value(fn rel ->
+      if rel.type == "HAS_WAWI_ID" do
+        case GraphStore.get_entity(rel.source_id, repo: Repo) do
+          {:ok, entity} -> entity
+          _ -> nil
+        end
+      end
+    end)
+  end
+
+  defp get_products_collection_id do
+    query = from c in Arcana.Collection, where: c.name == "products", select: c.id
+    Repo.one(query)
   end
 
   defp build_graph_data(root_entity, depth) do
@@ -256,6 +353,9 @@ defmodule LidlChefWeb.GraphDetailLive do
                 <span :if={@entity.description} class="text-base-content/60 text-sm">
                   {@entity.description}
                 </span>
+                <span :if={@product} class="text-base-content/60 text-sm">
+                  Wawi ID: {@product.metadata["wawi_id"]}
+                </span>
               </div>
             </div>
           </div>
@@ -410,6 +510,21 @@ defmodule LidlChefWeb.GraphDetailLive do
               value={count_nodes_by_type(@graph_data.nodes, "origin")}
               icon="hero-globe-alt"
             />
+          </div>
+
+          <%!-- Product Details Card --%>
+          <div :if={@product} class="mt-6 bg-base-100 border border-base-300 rounded-2xl p-6">
+            <h3 class="font-semibold text-base-content mb-4">Detalles del Producto</h3>
+
+            <div :if={@product.metadata["bullet_points"]} class="prose prose-sm max-w-none">
+              <div class="text-base-content/80 whitespace-pre-wrap text-sm">
+                {@product.metadata["bullet_points"]}
+              </div>
+            </div>
+
+            <div :if={!@product.metadata["bullet_points"]} class="text-base-content/60 text-sm">
+              No hay detalles adicionales disponibles para este producto.
+            </div>
           </div>
         </div>
       </div>

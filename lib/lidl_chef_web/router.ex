@@ -29,7 +29,6 @@ defmodule LidlChefWeb.Router do
     live "/recipes", RecipeLive
     live "/chat", ChefChatLive
     live "/products", ProductSearchLive
-    live "/products/:wawi_id", ProductDetailLive
     live "/graph/:entity_id", GraphDetailLive
   end
 

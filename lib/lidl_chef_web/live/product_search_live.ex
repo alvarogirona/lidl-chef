@@ -190,13 +190,14 @@ defmodule LidlChefWeb.ProductSearchLive do
   defp product_card(assigns) do
     metadata = assigns.result.metadata || %{}
     wawi_id = metadata["wawi_id"]
-    title = metadata["product_title"] || metadata["title"] || "Producto"
+    title = metadata["erpName"] || metadata["title"] || "Producto"
     product_line = metadata["product_line"]
+
     # Get a preview of the product content
     text_preview =
       case assigns.result do
         %{text: text} when is_binary(text) ->
-          text |> String.slice(0, 120) |> String.trim()
+          text |> String.slice(0, 150) |> String.trim()
         _ ->
           nil
       end
@@ -207,38 +208,52 @@ defmodule LidlChefWeb.ProductSearchLive do
       |> assign(:title, title)
       |> assign(:product_line, product_line)
       |> assign(:text_preview, text_preview)
+      |> assign(:score, assigns.result.score || assigns.result.semantic_score)
 
     ~H"""
     <.link
       :if={@wawi_id}
-      navigate={~p"/products/#{@wawi_id}"}
-      class="block bg-base-100 border border-base-300 rounded-xl p-4 hover:shadow-lg hover:border-[#0050AA]/30 transition-all group"
+      navigate={~p"/graph/#{@wawi_id}"}
+      class="group bg-base-100 border border-base-200 rounded-2xl overflow-hidden hover:border-[#0050AA]/30 hover:shadow-lg transition-all h-full flex flex-col"
     >
-      <div class="flex items-start gap-3">
-        <div class="w-12 h-12 bg-[#0050AA]/10 rounded-xl flex items-center justify-center flex-shrink-0 group-hover:bg-[#0050AA]/20 transition-colors">
-          <.icon name="hero-cube" class="w-6 h-6 text-[#0050AA]" />
+      <%!-- Card Header with gradient accent --%>
+      <div class="h-2 bg-gradient-to-r from-[#0050AA] to-[#0066cc] flex-shrink-0"></div>
+
+      <div class="p-5 flex-1 flex flex-col">
+        <%!-- Title --%>
+        <h3 class="font-semibold text-lg text-base-content mb-3 line-clamp-2 group-hover:text-[#0050AA] transition-colors flex-shrink-0">
+          {@title}
+        </h3>
+
+        <%!-- Meta badges --%>
+        <div class="flex flex-wrap gap-2 mb-4 flex-shrink-0">
+          <span
+            :if={@product_line}
+            class="inline-flex items-center gap-1 bg-base-200 text-base-content/70 px-2.5 py-1 rounded-lg text-xs"
+          >
+            <.icon name="hero-cube" class="w-3.5 h-3.5" />
+            {@product_line}
+          </span>
+          <span class="inline-flex items-center gap-1 bg-[#0050AA]/10 text-[#0050AA] px-2.5 py-1 rounded-lg text-xs font-medium">
+            <.icon name="hero-sparkles" class="w-3.5 h-3.5" />
+            {Float.round(@score * 100, 0)}% match
+          </span>
         </div>
-        <div class="flex-1 min-w-0">
-          <h3 class="font-semibold text-base-content line-clamp-2 mb-2 group-hover:text-[#0050AA] transition-colors">
-            {@title}
-          </h3>
-          <p :if={@text_preview} class="text-sm text-base-content/60 line-clamp-2 mb-3">
-            {@text_preview}
-          </p>
-          <div class="flex items-center gap-2 flex-wrap">
-            <span
-              :if={@product_line}
-              class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-[#0050AA]/10 text-[#0050AA]"
-            >
-              {@product_line}
-            </span>
-            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-base-200 text-base-content/60">
-              ID: {@wawi_id}
-            </span>
-          </div>
+
+        <%!-- Product preview --%>
+        <p :if={@text_preview} class="text-sm text-base-content/60 mb-4 line-clamp-3 flex-1">
+          {@text_preview}
+        </p>
+
+        <%!-- Wawi ID badge --%>
+        <div class="flex items-center gap-2 text-xs text-base-content/50 flex-shrink-0 mt-auto">
+          <.icon name="hero-tag" class="w-3.5 h-3.5" />
+          <span>ID: {@wawi_id}</span>
         </div>
-        <div class="flex-shrink-0">
-          <.icon name="hero-arrow-right" class="w-5 h-5 text-base-content/40 group-hover:text-[#0050AA] group-hover:translate-x-1 transition-all" />
+
+        <%!-- Arrow indicator --%>
+        <div class="absolute top-4 right-4 w-8 h-8 bg-base-200/0 group-hover:bg-[#0050AA]/10 rounded-full flex items-center justify-center transition-all">
+          <.icon name="hero-arrow-right" class="w-5 h-5 text-base-content/40 group-hover:text-[#0050AA] group-hover:translate-x-0.5 transition-all" />
         </div>
       </div>
     </.link>
