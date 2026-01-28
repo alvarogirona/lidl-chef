@@ -9,24 +9,17 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
     reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
 
-    # For dietary search, skip rewrite to preserve specific dietary terms
-    # Using hybrid search directly
-    ctx =
-      Agent.new(question, repo: Repo, limit: limit)
-      |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
-
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
     prompt_fn = fn question, chunks -> build_dietary_prompt(question, chunks, intent_info) end
 
-    ctx =
-      Agent.answer(ctx,
-        repo: Repo,
-        prompt: prompt_fn,
-        self_correct: self_correct
-      )
-
-    handle_answer(ctx)
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> Agent.answer(
+      repo: Repo,
+      prompt: prompt_fn,
+      self_correct: self_correct
+    )
+    |> handle_answer()
   end
 
   def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
@@ -34,16 +27,12 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     skip_rerank = Keyword.get(opts, :skip_rerank, false)
     reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
 
-    ctx =
-      Agent.new(question, repo: Repo, limit: limit)
-      |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
-
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-    chunks = extract_chunks(ctx)
-    prompt = build_dietary_prompt(question, chunks, intent_info)
-
-    LLM.stream(prompt, on_chunk, opts)
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> extract_chunks()
+    |> build_dietary_prompt(question, intent_info)
+    |> LLM.stream(on_chunk, opts)
   end
 
   defp handle_answer(%{answer: answer}) when not is_nil(answer) do
@@ -61,13 +50,10 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
   defp maybe_rerank(ctx, reranker_concurrency, true),
     do:
       Agent.rerank(ctx,
-        reranker: Reranker,
-        threshold: 2,
-        concurrency: reranker_concurrency,
-        base_url: "http://127.0.0.1:1234"
+        reranker: Reranker
       )
 
-  defp build_dietary_prompt(question, chunks, intent_info) do
+  defp build_dietary_prompt(chunks, question, intent_info) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
     dietary = intent_info.dietary || "especial"
 

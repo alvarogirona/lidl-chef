@@ -64,42 +64,13 @@ defmodule LidlChef.RecipeAssistant.RecipeSearch do
           {:ok, ingredients}
         else
           Logger.debug("RecipeSearch: No ingredients extracted, falling back to direct search")
-          {:ok, fallback_ingredients(query)}
+          {:err, :no_ingredients}
         end
 
       {:error, reason} ->
         Logger.warning("RecipeSearch: LLM extraction failed, falling back: #{inspect(reason)}")
-        {:ok, fallback_ingredients(query)}
+        {:err, :no_ingredients}
     end
-  end
-
-  defp fallback_ingredients(query) do
-    query
-    |> String.downcase()
-    |> String.replace(~r/[^\w\sáéíóúñ]/, "")
-    |> String.split()
-    |> Enum.reject(fn word ->
-      word in [
-        "receta",
-        "cocinar",
-        "preparar",
-        "hacer",
-        "busco",
-        "quiero",
-        "tengo",
-        "con",
-        "y",
-        "para",
-        "una",
-        "el",
-        "la",
-        "los",
-        "las",
-        "un",
-        "unos"
-      ]
-    end)
-    |> Enum.reject(&(String.length(&1) < 3))
   end
 
   defp search_with_ingredients([], limit), do: search_direct("", limit)
@@ -149,10 +120,7 @@ defmodule LidlChef.RecipeAssistant.RecipeSearch do
 
     reranked_ctx =
       Agent.rerank(ctx,
-        reranker: Reranker,
-        threshold: 2,
-        concurrency: concurrency,
-        base_url: "http://127.0.0.1:1234"
+        reranker: Reranker
       )
 
     case reranked_ctx.results do

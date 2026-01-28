@@ -5,41 +5,28 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
 
   def run(question, intent_info, opts) do
     IO.inspect(opts, label: "MealPlanner opts")
-    # For meal planning, we always want a large candidate pool to ensure variety.
-    # Ignore the limit option and always use 50.
     target_limit = 50
 
-    # Reranking is often skipped for meal planning to keep diversity and volume, or maybe done?
-    # Original code had: :skip_rerank, true for :meal_planning
     skip_rerank = Keyword.get(opts, :skip_rerank, true)
 
-    # Allow test-time injection (no network / deterministic).
     search_fn = Keyword.get(opts, :search_fn, &default_search/2)
     answer_fn = Keyword.get(opts, :answer_fn, &default_answer/2)
 
-    # We use multi_search by default for meal planning
-    ctx = Agent.new(question, repo: Repo, limit: target_limit)
-    ctx = %{ctx | question: question}
-
-    ctx = multi_search_for_menus(ctx, question, target_limit, search_fn)
-
-    # Rerank if not skipped (default is skipped)
-    ctx = maybe_rerank(ctx, Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    prompt_fn = fn question, chunks ->
+        prompt_fn = fn question, chunks ->
       build_meal_planning_prompt(question, chunks, intent_info)
     end
 
-    ctx =
-      answer_fn.(ctx,
-        repo: Repo,
-        prompt: prompt_fn,
-        self_correct: false
-      )
-
-    handle_answer(ctx)
+    Agent.new(question, repo: Repo, limit: target_limit)
+    |> Map.put(:question, question)
+    |> multi_search_for_menus(question, target_limit, search_fn)
+    |> maybe_rerank(Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
+    |> log_ctx_results()
+    |> answer_fn.(
+      repo: Repo,
+      prompt: prompt_fn,
+      self_correct: false
+    )
+    |> handle_answer()
   end
 
   def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
@@ -48,28 +35,13 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     skip_rerank = Keyword.get(opts, :skip_rerank, true)
     search_fn = Keyword.get(opts, :search_fn, &default_search/2)
 
-    ctx = Agent.new(question, repo: Repo, limit: target_limit)
-    ctx = %{ctx | question: question}
-    ctx = multi_search_for_menus(ctx, question, target_limit, search_fn)
-
-    ctx = maybe_rerank(ctx, Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    chunks = extract_chunks(ctx)
-    prompt = build_meal_planning_prompt(question, chunks, intent_info)
-
-    LLM.stream(prompt, on_chunk, opts)
-  end
-
-  defp handle_answer(%{answer: answer}) when is_binary(answer) do
-    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
-    {:ok, answer}
-  end
-
-  defp handle_answer(%{error: error}) do
-    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
-    {:error, {:no_answer, "Agent did not generate an answer"}}
+    Agent.new(question, repo: Repo, limit: target_limit)
+    |> multi_search_for_menus(question, target_limit, search_fn)
+    |> maybe_rerank(Keyword.get(opts, :reranker_concurrency, 10), !skip_rerank)
+    |> log_ctx_results()
+    |> extract_chunks()
+    |> build_meal_planning_prompt(question, intent_info)
+    |> LLM.stream(on_chunk, opts)
   end
 
   defp maybe_rerank(ctx, _concurrency, false), do: ctx
@@ -83,17 +55,18 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     )
   end
 
-  defp log_ctx_results(%{results: [%{chunks: chunks} | _]}) do
+  defp log_ctx_results(%{results: [%{chunks: chunks} | _]} = ctx) do
     Logger.debug("After multi_search_for_menus: ctx.results has #{length(chunks)} chunks")
+    ctx
   end
 
-  defp log_ctx_results(_ctx),
-    do: Logger.debug("After multi_search_for_menus: ctx.results has 0 chunks")
+  defp log_ctx_results(ctx) do
+    Logger.debug("After multi_search_for_menus: ctx.results has 0 chunks")
+    ctx
+  end
 
   defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
   defp extract_chunks(_), do: []
-
-  defp default_answer(ctx, opts), do: Agent.answer(ctx, opts)
 
   defp default_search(query, limit),
     do: Recipes.search(query, limit: limit, graph: false, mode: :hybrid)
@@ -119,7 +92,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
         chunks = search_single(query, limit_per_query, search_fn)
 
         Logger.debug(
-          "  #{idx}/#{length(search_queries)}: \"#{String.slice(query, 0, 35)}\" -> #{length(chunks)}"
+          "  #{idx}/#{length(search_queries)}: \"#{query}\" -> #{length(chunks)}"
         )
 
         chunks
@@ -238,7 +211,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     end
   end
 
-  defp build_meal_planning_prompt(question, chunks, intent_info) do
+  defp build_meal_planning_prompt(chunks, question, intent_info) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
     days = intent_info.days || 1
 

@@ -12,20 +12,16 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     search_query = build_ingredient_search_query(intent_info)
     Logger.debug("Built ingredient search query: #{search_query}")
 
-    ctx = Agent.new(question, repo: Repo, limit: limit)
-    ctx = search_with_query(ctx, search_query, question, limit)
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    ctx =
-      Agent.answer(ctx,
-        repo: Repo,
-        prompt: fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end,
-        self_correct: self_correct
-      )
-
-    handle_answer(ctx)
+    Agent.new(question, repo: Repo, limit: limit)
+    |> search_with_query(search_query, question, limit)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> log_ctx_results()
+    |> Agent.answer(
+      repo: Repo,
+      prompt: fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end,
+      self_correct: self_correct
+    )
+    |> handle_answer()
   end
 
   def run_stream(question, intent_info, on_chunk, opts)
@@ -37,16 +33,13 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     search_query = build_ingredient_search_query(intent_info)
     Logger.debug("Built ingredient search query: #{search_query}")
 
-    ctx = Agent.new(question, repo: Repo, limit: limit)
-    ctx = search_with_query(ctx, search_query, question, limit)
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    chunks = extract_chunks(ctx)
-    prompt = build_ingredient_prompt(question, chunks, intent_info)
-
-    LLM.stream(prompt, on_chunk, opts)
+    Agent.new(question, repo: Repo, limit: limit)
+    |> search_with_query(search_query, question, limit)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> log_ctx_results()
+    |> extract_chunks()
+    |> build_ingredient_prompt(question, intent_info)
+    |> LLM.stream(on_chunk, opts)
   end
 
   def run(question, intent_info, opts) do
@@ -59,15 +52,12 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
       Agent.new(question, repo: Repo, limit: limit)
       |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
       |> maybe_rerank(reranker_concurrency, !skip_rerank)
-
-    ctx =
-      Agent.answer(ctx,
+      |> Agent.answer(
         repo: Repo,
         prompt: fn question, chunks -> build_ingredient_prompt(question, chunks, intent_info) end,
         self_correct: self_correct
       )
-
-    handle_answer(ctx)
+      |> handle_answer()
   end
 
   def run_stream(question, intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
@@ -79,11 +69,9 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
       Agent.new(question, repo: Repo, limit: limit)
       |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
       |> maybe_rerank(reranker_concurrency, !skip_rerank)
-
-    chunks = extract_chunks(ctx)
-    prompt = build_ingredient_prompt(question, chunks, intent_info)
-
-    LLM.stream(prompt, on_chunk, opts)
+      |> extract_chunks()
+      |> build_ingredient_prompt(question, intent_info)
+      |> LLM.stream(on_chunk, opts)
   end
 
   defp handle_answer(%{answer: answer}) when not is_nil(answer) do
@@ -117,6 +105,8 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
       _ ->
         Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
     end
+
+    ctx
   end
 
   defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
@@ -171,7 +161,7 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     end
   end
 
-  defp build_ingredient_prompt(question, chunks, intent_info) do
+  defp build_ingredient_prompt(chunks, question, intent_info) do
     reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
     ingredients = Enum.join(intent_info.ingredients, ", ")
 

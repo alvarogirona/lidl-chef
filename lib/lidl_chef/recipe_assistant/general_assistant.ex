@@ -3,6 +3,144 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
   alias Arcana.Agent
   require Logger
 
+  def run(question, _intent_info, opts) do
+    limit = Keyword.get(opts, :limit, 5)
+    self_correct = Keyword.get(opts, :self_correct, true)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    build_context(question, skip_rewrite, limit)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> log_ctx_results()
+    |> Agent.answer(
+      repo: Repo,
+      prompt: &build_agentic_prompt/2,
+      self_correct: self_correct
+    )
+    |> handle_answer()
+  end
+
+  def run_stream(question, _intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
+    limit = Keyword.get(opts, :limit, 5)
+    skip_rerank = Keyword.get(opts, :skip_rerank, false)
+    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
+    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
+
+    build_context(question, skip_rewrite, limit)
+    |> maybe_rerank(reranker_concurrency, !skip_rerank)
+    |> log_ctx_results()
+    |> extract_chunks()
+    |> build_agentic_prompt(question)
+    |> LLM.stream(on_chunk, opts)
+  end
+
+  defp build_context(question, true, limit) do
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
+  end
+
+  defp build_context(question, false, limit) do
+    Agent.new(question, repo: Repo, limit: limit)
+    |> Agent.rewrite()
+    |> Agent.expand()
+    |> Agent.search(collection: Recipes.collection_name(), graph: false)
+  end
+
+  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
+  defp extract_chunks(_), do: []
+
+  defp handle_answer(%{answer: answer}) when not is_nil(answer) do
+    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
+    {:ok, answer}
+  end
+
+  defp handle_answer(%{error: error}) do
+    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
+    {:error, {:no_answer, "Agent did not generate an answer"}}
+  end
+
+  defp maybe_rerank(ctx, _, false), do: ctx
+
+  defp maybe_rerank(ctx, reranker_concurrency, true),
+    do:
+      Agent.rerank(ctx,
+        reranker: Reranker,
+        threshold: 2,
+        concurrency: reranker_concurrency,
+        base_url: "http://127.0.0.1:1234"
+      )
+
+  defp log_ctx_results(ctx) do
+    case ctx.results do
+      [%{chunks: chunks} | _] ->
+        Logger.debug("Before answer phase: #{length(chunks)} chunks in ctx.results")
+        unique_docs = chunks |> Enum.map(& &1.document_id) |> Enum.uniq() |> length()
+        Logger.debug("  → #{unique_docs} unique document_ids")
+
+      _ ->
+        Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
+    end
+  end
+
+  defp build_agentic_prompt(chunks, question) do
+    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+
+    Logger.debug(
+      "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
+    )
+
+    recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
+    Logger.debug("  → Recipe entries found in context: #{recipe_count}")
+
+    urls =
+      Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
+      |> Enum.map(&hd/1)
+      |> Enum.uniq()
+
+    Logger.debug("  → #{length(urls)} unique URLs in context")
+    Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
+
+    menu_instructions = build_menu_instructions(question, chunks)
+
+    """
+    #{@agentic_system_prompt}
+
+    ===== CONTEXTO (Documentos de Recetas de recetas.lidl.es) =====
+    #{reference_material}
+    ===== FIN DEL CONTEXTO =====
+
+    PREGUNTA DEL USUARIO: "#{question}"
+    #{menu_instructions}
+    RECUERDA:
+    - SOLO recomienda recetas que aparezcan en el CONTEXTO anterior
+    - Copia los nombres de recetas y URLs EXACTAMENTE como aparecen
+    - Todas las URLs deben ser del dominio recetas.lidl.es
+    - Si no hay recetas adecuadas en el contexto, dilo - NO inventes recetas
+
+    Proporciona una respuesta útil usando SOLO las recetas del contexto anterior.
+    """
+  end
+
+  defp build_menu_instructions(question, chunks) do
+    is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
+
+    if is_menu_request do
+      """
+
+      ⚠️ IMPORTANTE PARA MENÚS:
+      - El usuario ha solicitado un MENÚ, NO recetas individuales
+      - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
+      - DEBES organizar estas recetas en un menú estructurado
+      - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
+      - Puedes y DEBES usar las recetas del contexto para crear el menú completo
+      - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
+      """
+    else
+      ""
+    end
+  end
+
   @agentic_system_prompt """
   Eres un asistente de Lidl Chef. Tu objetivo es ayudar a los usuarios a descubrir recetas deliciosas
   de la colección de recetas de Lidl basadas en sus ingredientes disponibles y preferencias.
@@ -87,149 +225,4 @@ defmodule LidlChef.RecipeAssistant.GeneralAssistant do
      - Formas de aprovechar sobras
      - Variaciones de la receta (más picante, más ligera, etc.)
   """
-
-  def run(question, _intent_info, opts) do
-    limit = Keyword.get(opts, :limit, 5)
-    self_correct = Keyword.get(opts, :self_correct, true)
-    skip_rerank = Keyword.get(opts, :skip_rerank, false)
-    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
-    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
-
-    ctx = build_context(question, skip_rewrite, limit)
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    ctx =
-      Agent.answer(ctx,
-        repo: Repo,
-        prompt: &build_agentic_prompt/2,
-        self_correct: self_correct
-      )
-
-    handle_answer(ctx)
-  end
-
-  def run_stream(question, _intent_info, on_chunk, opts) when is_function(on_chunk, 1) do
-    limit = Keyword.get(opts, :limit, 5)
-    skip_rerank = Keyword.get(opts, :skip_rerank, false)
-    skip_rewrite = Keyword.get(opts, :skip_rewrite, false)
-    reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
-
-    ctx = build_context(question, skip_rewrite, limit)
-    ctx = maybe_rerank(ctx, reranker_concurrency, !skip_rerank)
-
-    log_ctx_results(ctx)
-
-    chunks = extract_chunks(ctx)
-    prompt = build_agentic_prompt(question, chunks)
-
-    LLM.stream(prompt, on_chunk, opts)
-  end
-
-  defp build_context(question, true, limit) do
-    Agent.new(question, repo: Repo, limit: limit)
-    |> Agent.search(collection: Recipes.collection_name(), graph: false, mode: :hybrid)
-  end
-
-  defp build_context(question, false, limit) do
-    Agent.new(question, repo: Repo, limit: limit)
-    |> Agent.rewrite()
-    |> Agent.expand()
-    |> Agent.search(collection: Recipes.collection_name(), graph: false)
-  end
-
-  defp extract_chunks(%{results: [%{chunks: chunks} | _]}), do: chunks
-  defp extract_chunks(_), do: []
-
-  defp handle_answer(%{answer: answer}) when not is_nil(answer) do
-    Logger.debug("After answer phase: Generated #{String.length(answer)} chars")
-    {:ok, answer}
-  end
-
-  defp handle_answer(%{error: error}) do
-    Logger.debug("After answer phase: NO ANSWER generated! Error: #{inspect(error)}")
-    {:error, {:no_answer, "Agent did not generate an answer"}}
-  end
-
-  defp maybe_rerank(ctx, _, false), do: ctx
-
-  defp maybe_rerank(ctx, reranker_concurrency, true),
-    do:
-      Agent.rerank(ctx,
-        reranker: Reranker,
-        threshold: 2,
-        concurrency: reranker_concurrency,
-        base_url: "http://127.0.0.1:1234"
-      )
-
-  defp log_ctx_results(ctx) do
-    case ctx.results do
-      [%{chunks: chunks} | _] ->
-        Logger.debug("Before answer phase: #{length(chunks)} chunks in ctx.results")
-        unique_docs = chunks |> Enum.map(& &1.document_id) |> Enum.uniq() |> length()
-        Logger.debug("  → #{unique_docs} unique document_ids")
-
-      _ ->
-        Logger.debug("Before answer phase: NO RESULTS FOUND in ctx.results!")
-    end
-  end
-
-  defp build_agentic_prompt(question, chunks) do
-    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
-
-    Logger.debug(
-      "Building prompt: #{length(chunks)} chunks, #{String.length(reference_material)} chars of reference material"
-    )
-
-    recipe_count = Regex.scan(~r{Recipe:}, reference_material) |> length()
-    Logger.debug("  → Recipe entries found in context: #{recipe_count}")
-
-    urls =
-      Regex.scan(~r{https://recetas\.lidl\.es/recetas/[^\s\)]+}, reference_material)
-      |> Enum.map(&hd/1)
-      |> Enum.uniq()
-
-    Logger.debug("  → #{length(urls)} unique URLs in context")
-    Logger.debug("  → First 5 URLs: #{inspect(Enum.take(urls, 5))}")
-
-    menu_instructions = build_menu_instructions(question, chunks)
-
-    """
-    #{@agentic_system_prompt}
-
-    ===== CONTEXTO (Documentos de Recetas de recetas.lidl.es) =====
-    #{reference_material}
-    ===== FIN DEL CONTEXTO =====
-
-    PREGUNTA DEL USUARIO: "#{question}"
-    #{menu_instructions}
-    RECUERDA:
-    - SOLO recomienda recetas que aparezcan en el CONTEXTO anterior
-    - Copia los nombres de recetas y URLs EXACTAMENTE como aparecen
-    - Todas las URLs deben ser del dominio recetas.lidl.es
-    - Si no hay recetas adecuadas en el contexto, dilo - NO inventes recetas
-
-    Proporciona una respuesta útil usando SOLO las recetas del contexto anterior.
-    """
-  end
-
-  defp build_menu_instructions(question, chunks) do
-    is_menu_request = Regex.match?(~r/men[uú]\s+(semanal|diario|de\s+\d+\s+d[ií]as?)/i, question)
-
-    if is_menu_request do
-      """
-
-      ⚠️ IMPORTANTE PARA MENÚS:
-      - El usuario ha solicitado un MENÚ, NO recetas individuales
-      - Tienes #{length(chunks)} recetas disponibles en el contexto - ¡MÁS que suficientes!
-      - DEBES organizar estas recetas en un menú estructurado
-      - Para menús semanales, distribuye las recetas en 7 días con 3 comidas por día (desayuno, comida, cena)
-      - Puedes y DEBES usar las recetas del contexto para crear el menú completo
-      - NO digas que no hay recetas - ¡ya tienes #{length(chunks)} recetas para elegir!
-      """
-    else
-      ""
-    end
-  end
 end
