@@ -133,6 +133,23 @@ const KnowledgeGraph = {
       .force("center", d3.forceCenter(width / 2, height / 2))
       .force("collision", d3.forceCollide().radius(40))
     
+    const linkMap = new Map()
+    filteredLinks.forEach(l => {
+      const sourceId = typeof l.source === "object" ? l.source.id : l.source
+      const targetId = typeof l.target === "object" ? l.target.id : l.target
+      const key = `${sourceId}-${targetId}`
+      const reverseKey = `${targetId}-${sourceId}`
+      
+      if (linkMap.has(reverseKey)) {
+        linkMap.get(reverseKey).bidirectional = true
+        l.bidirectional = true
+        l.curveDirection = -1
+      } else {
+        linkMap.set(key, l)
+        l.curveDirection = 1
+      }
+    })
+    
     // Create links
     const link = g.append("g")
       .attr("class", "links")
@@ -140,19 +157,24 @@ const KnowledgeGraph = {
       .data(filteredLinks)
       .join("g")
     
-    const linkLine = link.append("line")
+    const linkLine = link.append("path")
       .attr("stroke", "#cbd5e1")
       .attr("stroke-width", d => Math.max(1, (d.strength || 5) / 3))
       .attr("stroke-opacity", 0.6)
+      .attr("fill", "none")
       .attr("marker-end", "url(#arrow)")
     
-    // Link labels
+    linkLine.attr("id", (d, i) => `link-${i}`)
+    
     const linkLabel = link.append("text")
       .attr("class", "link-label")
       .attr("font-size", "9px")
       .attr("fill", "#64748b")
       .attr("text-anchor", "middle")
-      .attr("dy", -5)
+      .attr("dy", -2)
+      .append("textPath")
+      .attr("href", (d, i) => `#link-${i}`)
+      .attr("startOffset", "50%")
       .text(d => d.type ? d.type.replace(/_/g, " ") : "")
     
     // Create nodes
@@ -219,15 +241,41 @@ const KnowledgeGraph = {
     
     // Update positions on tick
     this.simulation.on("tick", () => {
-      linkLine
-        .attr("x1", d => d.source.x)
-        .attr("y1", d => d.source.y)
-        .attr("x2", d => d.target.x)
-        .attr("y2", d => d.target.y)
-      
-      linkLabel
-        .attr("x", d => (d.source.x + d.target.x) / 2)
-        .attr("y", d => (d.source.y + d.target.y) / 2)
+      linkLine.attr("d", d => {
+        if (d.bidirectional) {
+          const sourceId = typeof d.source === "object" ? d.source.id : d.source
+          const targetId = typeof d.target === "object" ? d.target.id : d.target
+          
+          let sx, sy, tx, ty
+          if (sourceId < targetId) {
+            sx = d.source.x
+            sy = d.source.y
+            tx = d.target.x
+            ty = d.target.y
+          } else {
+            sx = d.target.x
+            sy = d.target.y
+            tx = d.source.x
+            ty = d.source.y
+          }
+          
+          const dx = tx - sx
+          const dy = ty - sy
+          const dr = Math.sqrt(dx * dx + dy * dy)
+          
+          const offsetX = -dy / dr
+          const offsetY = dx / dr
+          
+          const offset = 30 * d.curveDirection
+          
+          const cx = (d.source.x + d.target.x) / 2 + offsetX * offset
+          const cy = (d.source.y + d.target.y) / 2 + offsetY * offset
+          
+          return `M${d.source.x},${d.source.y}Q${cx},${cy} ${d.target.x},${d.target.y}`
+        } else {
+          return `M${d.source.x},${d.source.y}L${d.target.x},${d.target.y}`
+        }
+      })
       
       node.attr("transform", d => `translate(${d.x},${d.y})`)
     })
