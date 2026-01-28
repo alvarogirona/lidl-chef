@@ -9,7 +9,7 @@ defmodule LidlChef.Recipes do
   alias LidlChef.Repo
   require Logger
 
-  @collection "lidl_recipes"
+  @collection "recipes_graph"
 
   @doc """
   Load and ingest all recipes from the CSV dataset.
@@ -151,7 +151,8 @@ defmodule LidlChef.Recipes do
       repo: Repo,
       collection: @collection,
       metadata: metadata,
-      graph: enable_graph
+      graph: enable_graph,
+      extractor: {LidlChef.Graph.RecipeExtractor, []}
     )
   end
 
