@@ -76,7 +76,7 @@ defmodule LidlChef.Graph.ProductExtractor do
     ## Entity types for product catalog:
     - wawiId: Internal product identifier
     - productErpName: The main product based on its erpName (e.g., "Croissant brioche", "Ensalada de pasta rúcula"). A product with the same wawiId may have multiple erpNames.
-    - productTitle: The title of a product. A product with the same wawiId may have multiple titles.
+    - productTitle: The title of a product. A product with the same wawiId/ERPName may have multiple titles.
     - brand: Brand or manufacturer name if mentioned
     - ingredient: Individual ingredients (e.g., "harina de trigo", "azúcar", "aceite de girasol")
     - allergen: Allergens present in the product (e.g., "gluten", "leche", "huevos", "frutos de cáscara")
@@ -87,7 +87,7 @@ defmodule LidlChef.Graph.ProductExtractor do
     - nutrient: Nutritional components or claims (e.g., "proteínas", "carbohidratos")
 
     ## Relationship types to extract:
-    - HAS_WAWI_ID: ProductErpName and ProductTitle entities can be linked to the same wawiId.
+    - HAS_WAWI_ID: ProductErpName entities have a wawiId.
     - HAS_BRAND: Product has a specific brand
     - BRAND_OF: Brand is the brand of the product, inverse relationship of HAS_BRAND
     - HAS_TITLE: ProductErpName relationship to ProductTitle
