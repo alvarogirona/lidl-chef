@@ -83,8 +83,7 @@ config :arcana,
   chunker: :default,
   llm: &LidlChef.LLM.complete/1,
   graph: [
-    # Disable GraphRAG for now
-    enabled: false,
+    enabled: true,
     community_levels: 5,
     resolution: 1.0,
     extractor: Arcana.Graph.GraphExtractor.LLM
