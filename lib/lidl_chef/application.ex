@@ -23,8 +23,6 @@ defmodule LidlChef.Application do
       {Phoenix.PubSub, name: LidlChef.PubSub},
       {Cachex, name: :recipe_search_cache},
       Arcana.TaskSupervisor,
-      Arcana.Embedder.Local,
-      # Arcana.Graph.NERServing, # Not needed - using LLM extractor instead
       LidlChefWeb.Endpoint
     ]
 
