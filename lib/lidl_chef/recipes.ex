@@ -39,7 +39,7 @@ defmodule LidlChef.Recipes do
     # Normalize the path
     csv_path = Path.expand(csv_path)
 
-    Logger.info("Loading recipes from #{csv_path}")
+    Arcana.Collection.get_or_create(@collection, Repo, "Lidl recipe dataset with GraphRAG")
 
     case File.exists?(csv_path) do
       true ->
@@ -113,15 +113,27 @@ defmodule LidlChef.Recipes do
   defp parse_json_list(_), do: []
 
   defp ingest_batch(recipes, enable_graph) do
-    recipes
-    |> Enum.reduce({0, []}, fn recipe, {count, errors} ->
-      case ingest_recipe(recipe, enable_graph) do
-        {:ok, _doc} ->
-          {count + 1, errors}
+    concurrency = Application.get_env(:arcana, :graph, [])[:concurrency] || 6
 
-        {:error, reason} ->
-          {count, [{recipe.title, reason} | errors]}
-      end
+    recipes
+    |> Enum.chunk_every(concurrency)
+    |> Enum.reduce({0, []}, fn recipe_batch, {count, errors} ->
+      tasks =
+        Enum.map(recipe_batch, fn recipe ->
+          Task.async(fn ->
+            case ingest_recipe(recipe, enable_graph) do
+              {:ok, _doc} -> {:ok, recipe.title}
+              {:error, reason} -> {:error, recipe.title, reason}
+            end
+          end)
+        end)
+
+      results = Task.await_many(tasks, :infinity)
+
+      Enum.reduce(results, {count, errors}, fn
+        {:ok, _title}, {c, e} -> {c + 1, e}
+        {:error, title, reason}, {c, e} -> {c, [{title, reason} | e]}
+      end)
     end)
   end
 

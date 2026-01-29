@@ -39,7 +39,7 @@ defmodule LidlChef.Graph.RecipeExtractor do
             {:error, reason}
         end
 
-      metadata =
+      extracted_data_info =
         case result do
           {:ok, data} ->
             %{entity_count: length(data.entities), relationship_count: length(data.relationships)}
@@ -48,7 +48,7 @@ defmodule LidlChef.Graph.RecipeExtractor do
             %{entity_count: 0, relationship_count: 0}
         end
 
-      {result, metadata}
+      {result, extracted_data_info}
     end)
   end
 
@@ -73,6 +73,12 @@ defmodule LidlChef.Graph.RecipeExtractor do
     - Relación "APPLIES_METHOD" entre Receta y Método de cocción
     - Relación "BELONGS_TO_CATEGORY" entre Receta y Categoría
     - Relación "HAS_NUTRIENT" entre Receta y Nutriente
+    - `strength` (1-10): Indica la relevancia o importancia de la relación en el contexto de la receta.
+
+    Cada relación puede incluir metadatos adicionales si es relevante:
+    - Por ejemplo, para la relación "USES_INGREDIENT", puede incluir la cantidad y unidad de la entidad ingrediente
+    - Los nutrientes deben extrarse como entidad (proteinas, carbohidratos, grasas, calorías) con su valor asociado en los metadatos de la relación "HAS_NUTRIENT".
+      - Por ejemplo: "25g de proteinas", la entidad proteinas (tipo nutriente) y en los metadatos de la relación HAS_NUTRIENT incluir {"value": 25, "unit": "g"}
 
     ## Output format:
     Return a JSON object with two arrays:
@@ -83,7 +89,14 @@ defmodule LidlChef.Graph.RecipeExtractor do
         {"name": "Entity Name", "type": "type", "description": "Brief context"}
       ],
       "relationships": [
-        {"source": "Source Entity", "target": "Target Entity", "type": "RELATIONSHIP_TYPE", "description": "Brief description", "strength": 9}
+        {
+          "source": "Source Entity",
+          "target": "Target Entity",
+          "type": "RELATIONSHIP_TYPE",
+          "description": "Brief description",
+          "strength": 9,
+          "metadata": {"some_metadata_key": "some_metadata_value", "another_key": 123}
+        }
       ]
     }
     ```
@@ -156,7 +169,8 @@ defmodule LidlChef.Graph.RecipeExtractor do
       target: Map.get(rel, "target"),
       type: normalize_relationship_type(Map.get(rel, "type")),
       description: Map.get(rel, "description"),
-      strength: normalize_strength(Map.get(rel, "strength"))
+      strength: normalize_strength(Map.get(rel, "strength")),
+      metadata: Map.get(rel, "metadata", %{})
     }
   end
 
