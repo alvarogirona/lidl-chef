@@ -79,7 +79,7 @@ config :exla,
 # Configure Arcana RAG system
 config :arcana,
   repo: LidlChef.Repo,
-  embedder: {:local, model: "BAAI/bge-small-en-v1.5"},
+  embedder: LidlChef.Embedder,
   chunker: :default,
   llm: &LidlChef.LLM.complete/1,
   graph: [
