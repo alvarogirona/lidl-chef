@@ -23,36 +23,39 @@ defmodule LidlChef.IntentClassifier do
     general_search: "General recipe search or browsing"
   }
 
+  # Translate this prompt to spanish
   @classification_prompt """
-  You are a recipe query classifier. Analyze the user's query and classify it into ONE of these intents:
+  Eres un clasificador de intenciones de recetas. Analiza la consulta del usuario y clasifícala en UNA de estas intenciones:
 
-  1. INGREDIENT_SEARCH - User mentions specific ingredients they have and wants recipes.
-     If the user is mentioning ingredients it means he/she wants to find recipes using them.
-     Examples: "Tengo pollo y arroz", "Que puedo hacer con lentejas?", "I have tomatoes and cheese"
 
-  2. MEAL_PLANNING - User wants a meal plan (breakfast/lunch/dinner, daily menu, weekly menu)
-     Examples: "Dame un menú semanal", "Plan de comidas para 7 días", "Menú diario"
+  Eres un clasificador de intenciones de recetas. Analiza la consulta del usuario y clasifícala en UNA de estas intenciones:
 
-  3. RECIPE_QUESTION - User asks about a specific recipe, technique, or cooking question
-     Examples: "Como se hace la paella?", "Cuanto tiempo cocinar el pollo?", "Tips para cocinar arroz"
+  1. INGREDIENT_SEARCH - El usuario menciona ingredientes específicos que tiene y quiere recetas.
+     Si el usuario menciona ingredientes, significa que quiere encontrar recetas que los usen.
+     Ejemplos: "Tengo pollo y arroz", "¿Qué puedo hacer con lentejas?", "I have tomatoes and cheese"
 
-  4. DIETARY_FILTER - User mentions dietary restrictions prominently
-     Examples: "Recetas veganas", "Sin gluten", "Bajo en calorías"
+  2. MEAL_PLANNING - El usuario quiere un plan de comidas (desayuno/almuerzo/cena, menú diario, menú semanal)
+     Ejemplos: "Dame un menú semanal", "Plan de comidas para 7 días", "Menú diario"
 
-  5. GENERAL_SEARCH - General recipe browsing or unspecific requests
-     Examples: "Dame una receta", "Recetas de cena", "Algo para cocinar"
+  3. RECIPE_QUESTION - El usuario pregunta sobre una receta específica, técnica o duda de cocina
+     Ejemplos: "¿Cómo se hace la paella?", "¿Cuánto tiempo cocinar el pollo?", "Consejos para cocinar arroz"
 
-  Also extract:
-  - INGREDIENTS: List any specific ingredients mentioned (comma-separated)
-  - MEAL_TYPE: breakfast, lunch, dinner, snack, or none
-  - DIETARY: Any dietary restrictions mentioned
-  - DAYS: Number of days if meal planning (1 for daily, 7 for weekly, etc.)
-  - ATTRIBUTES: Any other relevant attributes (e.g., cuisine type, cooking time, high protein, etc.)
+  4. DIETARY_FILTER - El usuario menciona restricciones dietéticas de forma prominente
+     Ejemplos: "Recetas veganas", "Sin gluten", "Bajo en calorías"
 
-  Respond ONLY in this exact format (no extra text):
+  5. GENERAL_SEARCH - Navegación general de recetas o solicitudes no específicas
+     Ejemplos: "Dame una receta", "Recetas de cena", "Algo para cocinar"
+  También extrae:
+  - INGREDIENTS: Lista de ingredientes específicos mencionados (separados por comas)
+  - FOOD_TYPE: desayuno, almuerzo, cena, merienda, o ninguno
+  - DIETARY: Cualquier restricción dietética mencionada
+  - DAYS: número de días si es planificación de comidas (1 para diario, 7 para semanal, etc.)
+  - ATTRIBUTES: Cualquier otro atributo relevante (por ejemplo, tipo de cocina, tiempo de cocción, alto en proteínas, etc.)
+
+  Responde SOLO en este formato exacto (sin texto adicional):
   INTENT: <intent_name>
-  INGREDIENTS: <ingredient1, ingredient2, ...> or NONE
-  MEAL_TYPE: <meal_type> or NONE
+  INGREDIENTS: <ingredient1, ingredient2, ...> or NONE (in original language of the query)
+  FOOD_TYPE: <meal_type> or NONE
   DIETARY: <restriction> or NONE
   DAYS: <number> or NONE
   ATTRIBUTES: <attribute1, attribute2, ...> or NONE
