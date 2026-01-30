@@ -459,7 +459,7 @@ defmodule LidlChefWeb.GraphDetailLive do
                       </div>
 
                       <%!-- Metadata Section --%>
-                      <div :if={rel.metadata != %{} && map_size(rel.metadata) > 0} class="mt-3 pt-3 border-t border-base-200">
+                      <div :if={is_map(rel.metadata) && map_size(rel.metadata) > 0} class="mt-3 pt-3 border-t border-base-200">
                         <div class="grid grid-cols-2 gap-2">
                           <div
                             :for={{key, value} <- rel.metadata}
