@@ -242,7 +242,7 @@ defmodule LidlChefWeb.GraphDetailLive do
           target: rel.target_id,
           type: rel.type,
           strength: rel.strength || 5,
-          metadata: rel[:metadata] || %{}
+          metadata: Map.get(rel, :metadata, %{})
         }
       end)
 
@@ -258,12 +258,19 @@ defmodule LidlChefWeb.GraphDetailLive do
     # Fetch the entity and its relationships for the detail card
     case GraphStore.get_entity(id, repo: Repo) do
       {:ok, _entity} ->
+        # Get current graph node IDs to filter relationships to only those visible in context
+        current_node_ids = MapSet.new(socket.assigns.graph_data.nodes, & &1.id)
+
         relationships = GraphStore.get_relationships(id, repo: Repo)
 
-        # Get details about connected entities
+        # Get details about connected entities that are IN THE CURRENT GRAPH
         relationship_details =
           relationships
-          |> Enum.take(5)
+          |> Enum.filter(fn rel ->
+            # Only include relationships where BOTH nodes are in the current graph
+            MapSet.member?(current_node_ids, rel.source_id) &&
+            MapSet.member?(current_node_ids, rel.target_id)
+          end)
           |> Enum.map(fn rel ->
             # Get the other entity (not the selected one)
             other_id = if rel.source_id == id, do: rel.target_id, else: rel.source_id
@@ -278,7 +285,7 @@ defmodule LidlChefWeb.GraphDetailLive do
               %{
                 type: rel.type,
                 direction: if(rel.source_id == id, do: :outgoing, else: :incoming),
-                metadata: rel[:metadata] || %{},
+                metadata: Map.get(rel, :metadata, %{}),
                 strength: rel.strength,
                 entity: %{
                   id: other_entity.id,
