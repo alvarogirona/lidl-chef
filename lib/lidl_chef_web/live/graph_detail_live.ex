@@ -241,7 +241,8 @@ defmodule LidlChefWeb.GraphDetailLive do
           source: rel.source_id,
           target: rel.target_id,
           type: rel.type,
-          strength: rel.strength || 5
+          strength: rel.strength || 5,
+          metadata: rel[:metadata] || %{}
         }
       end)
 
@@ -277,6 +278,8 @@ defmodule LidlChefWeb.GraphDetailLive do
               %{
                 type: rel.type,
                 direction: if(rel.source_id == id, do: :outgoing, else: :incoming),
+                metadata: rel[:metadata] || %{},
+                strength: rel.strength,
                 entity: %{
                   id: other_entity.id,
                   name: other_entity.name,
@@ -364,67 +367,118 @@ defmodule LidlChefWeb.GraphDetailLive do
         <%!-- Graph Section with Detail Card --%>
         <div :if={@entity && !@loading} class="max-w-6xl mx-auto px-4 sm:px-6 pb-12">
           <div class="relative">
-            <%!-- Selected Node Detail Card --%>
+            <%!-- Selected Node Detail Card - Redesigned --%>
             <div
               :if={@selected_node}
-              class="absolute top-20 left-6 z-10 bg-white border border-base-300 rounded-xl shadow-lg max-w-sm w-80 animate-fade-in"
+              class="absolute top-4 left-4 z-20 bg-white/95 backdrop-blur-sm border border-base-200 rounded-2xl shadow-xl max-w-sm w-96 animate-fade-in overflow-hidden"
             >
-              <div class="p-4">
-                <div class="flex items-start justify-between mb-3">
-                  <div class="flex items-center gap-2 flex-1 min-w-0">
-                    <h3 class="font-semibold text-base-content truncate flex-1">
+              <%!-- Card Header with gradient --%>
+              <div class="bg-gradient-to-r from-[#0050AA] to-[#0070DD] p-4">
+                <div class="flex items-start justify-between">
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2 mb-1">
+                      <span class="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/20 text-white uppercase tracking-wider">
+                        {@selected_node.type}
+                      </span>
+                    </div>
+                    <h3 class="font-bold text-white text-lg leading-tight">
                       {@selected_node.name}
                     </h3>
+                  </div>
+                  <div class="flex items-center gap-1 ml-2">
                     <.link
                       navigate={~p"/graph/#{@selected_node.id}"}
-                      class="flex-shrink-0 p-1.5 hover:bg-base-200 rounded-lg transition-colors"
-                      title="Ver detalles"
+                      class="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                      title="Ver grafo completo"
                     >
-                      <.icon name="hero-arrow-right" class="w-5 h-5 text-[#0050AA]" />
+                      <.icon name="hero-arrow-top-right-on-square" class="w-5 h-5 text-white" />
                     </.link>
+                    <button
+                      phx-click="close-detail"
+                      class="p-2 hover:bg-white/20 rounded-xl transition-all duration-200"
+                    >
+                      <.icon name="hero-x-mark" class="w-5 h-5 text-white" />
+                    </button>
                   </div>
-                  <button
-                    phx-click="close-detail"
-                    class="flex-shrink-0 ml-2 p-1 hover:bg-base-200 rounded-lg transition-colors"
-                  >
-                    <.icon name="hero-x-mark" class="w-5 h-5 text-base-content/60" />
-                  </button>
                 </div>
+              </div>
 
-                <span class="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-[#0050AA]/10 text-[#0050AA] mb-3">
-                  {@selected_node.type}
-                </span>
+              <%!-- Card Body --%>
+              <div class="p-4">
+                <div :if={@selected_node_relationships != []} class="space-y-3">
+                  <div class="flex items-center justify-between">
+                    <p class="text-xs font-semibold text-base-content/60 uppercase tracking-wider">
+                      Conexiones
+                    </p>
+                    <span class="text-xs text-base-content/40">
+                      {length(@selected_node_relationships)} relaciones
+                    </span>
+                  </div>
 
-                <div :if={@selected_node_relationships != []} class="space-y-2">
-                  <p class="text-xs font-medium text-base-content/70 uppercase tracking-wide">
-                    Relaciones
-                  </p>
-                  <div class="space-y-1.5 max-h-48 overflow-y-auto">
+                  <div class="space-y-2 max-h-72 overflow-y-auto pr-1">
                     <div
                       :for={rel <- @selected_node_relationships}
-                      class="flex items-start gap-2 text-sm p-2 bg-base-50 rounded-lg hover:bg-base-100 transition-colors"
+                      class="group relative bg-gradient-to-r from-base-100 to-base-50 border border-base-200 rounded-xl p-3 hover:border-[#0050AA]/30 hover:shadow-md transition-all duration-200"
                     >
-                      <.icon
-                        name={if rel.direction == :outgoing, do: "hero-arrow-right-mini", else: "hero-arrow-left-mini"}
-                        class="w-4 h-4 text-base-content/40 mt-0.5 flex-shrink-0"
-                      />
-                      <div class="flex-1 min-w-0">
-                        <p class="text-xs text-base-content/60 font-medium">
+                      <%!-- Relationship Type Badge --%>
+                      <div class="flex items-center gap-2 mb-2">
+                        <div class={[
+                          "flex items-center justify-center w-6 h-6 rounded-lg",
+                          if(rel.direction == :outgoing, do: "bg-emerald-100", else: "bg-blue-100")
+                        ]}>
+                          <.icon
+                            name={if rel.direction == :outgoing, do: "hero-arrow-right-mini", else: "hero-arrow-left-mini"}
+                            class={[
+                              "w-4 h-4",
+                              if(rel.direction == :outgoing, do: "text-emerald-600", else: "text-blue-600")
+                            ]}
+                          />
+                        </div>
+                        <span class="text-xs font-semibold text-base-content/70 uppercase tracking-wide">
                           {rel.type |> String.replace("_", " ")}
-                        </p>
-                        <p class="text-base-content truncate">
-                          {rel.entity.name}
-                        </p>
-                        <p class="text-xs text-base-content/50">
-                          {rel.entity.type}
-                        </p>
+                        </span>
+                      </div>
+
+                      <%!-- Entity Info --%>
+                      <div class="flex items-center gap-3">
+                        <div class="flex-1 min-w-0">
+                          <p class="font-medium text-base-content truncate">
+                            {rel.entity.name}
+                          </p>
+                          <p class="text-xs text-base-content/50">
+                            {rel.entity.type}
+                          </p>
+                        </div>
+                      </div>
+
+                      <%!-- Metadata Section --%>
+                      <div :if={rel.metadata != %{} && map_size(rel.metadata) > 0} class="mt-3 pt-3 border-t border-base-200">
+                        <div class="grid grid-cols-2 gap-2">
+                          <div
+                            :for={{key, value} <- rel.metadata}
+                            :if={value != nil && value != ""}
+                            class="bg-white rounded-lg px-2.5 py-1.5 border border-base-100"
+                          >
+                            <p class="text-[10px] text-base-content/50 uppercase tracking-wider font-medium">
+                              {format_metadata_key(key)}
+                            </p>
+                            <p class="text-sm font-semibold text-base-content">
+                              {format_metadata_value(value)}
+                            </p>
+                          </div>
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                <div :if={@selected_node_relationships == []} class="text-sm text-base-content/60">
-                  No hay relaciones disponibles
+                <div :if={@selected_node_relationships == []} class="text-center py-6">
+                  <div class="w-12 h-12 mx-auto mb-3 bg-base-100 rounded-full flex items-center justify-center">
+                    <.icon name="hero-link-slash" class="w-6 h-6 text-base-content/30" />
+                  </div>
+                  <p class="text-sm text-base-content/50">
+                    No hay conexiones disponibles
+                  </p>
                 </div>
               </div>
             </div>
@@ -531,6 +585,23 @@ defmodule LidlChefWeb.GraphDetailLive do
     </Layouts.app>
     """
   end
+
+  defp format_metadata_key(key) when is_binary(key) do
+    key
+    |> String.replace("_", " ")
+    |> String.split(" ")
+    |> Enum.map(&String.capitalize/1)
+    |> Enum.join(" ")
+  end
+
+  defp format_metadata_key(key), do: to_string(key)
+
+  defp format_metadata_value(value) when is_binary(value), do: value
+  defp format_metadata_value(value) when is_number(value), do: to_string(value)
+  defp format_metadata_value(value) when is_list(value), do: Enum.join(value, ", ")
+  defp format_metadata_value(value) when is_map(value), do: Jason.encode!(value)
+  defp format_metadata_value(nil), do: "-"
+  defp format_metadata_value(value), do: inspect(value)
 
   defp stat_card(assigns) do
     ~H"""

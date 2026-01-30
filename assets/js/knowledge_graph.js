@@ -16,7 +16,9 @@ const KnowledgeGraph = {
     this.hiddenTypes = new Set()
     this.rootNodeId = null
     this.hoveredNode = null
+    this.hoveredEdge = null
     this.hoveredNeighbors = new Set()
+    this.edgeTooltip = null
     
     // Base color palette for known types
     this.baseColors = {
@@ -101,6 +103,10 @@ const KnowledgeGraph = {
     if (this.renderer) {
       this.renderer.kill()
       this.renderer = null
+    }
+    if (this.edgeTooltip && this.edgeTooltip.parentNode) {
+      this.edgeTooltip.parentNode.removeChild(this.edgeTooltip)
+      this.edgeTooltip = null
     }
     this.graph = null
   },
@@ -218,10 +224,15 @@ const KnowledgeGraph = {
       const edgeKey = `${sourceId}-${targetId}`
       if (!this.graph.hasEdge(edgeKey) && !this.graph.hasEdge(`${targetId}-${sourceId}`)) {
         try {
+          // Format label from edge type (e.g., "has_ingredient" -> "has ingredient")
+          const edgeLabel = link.type ? link.type.replace(/_/g, " ") : ""
+          
           this.graph.addEdgeWithKey(edgeKey, sourceId, targetId, {
             size: 0.5,
             color: "#e2e8f0",
-            edgeType: link.type
+            edgeType: link.type,
+            label: edgeLabel,
+            metadata: link.metadata || {}
           })
         } catch (e) {
           // Node might not exist
@@ -230,16 +241,22 @@ const KnowledgeGraph = {
     })
     
     // Create the Sigma renderer
+    // Enable edge labels for smaller graphs only (performance consideration)
+    const showEdgeLabels = nodeCount < 200
+    
     this.renderer = new Sigma(this.graph, sigmaContainer, {
       minCameraRatio: 0.02,
       maxCameraRatio: 5,
-      renderEdgeLabels: false,
+      renderEdgeLabels: showEdgeLabels,
       defaultEdgeType: "line",
       labelRenderedSizeThreshold: isVeryLargeGraph ? 15 : (isLargeGraph ? 10 : 6),
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: isVeryLargeGraph ? 10 : 12,
       labelWeight: "500",
       labelColor: { color: "#1e293b" },
+      edgeLabelFont: "Inter, system-ui, sans-serif",
+      edgeLabelSize: 9,
+      edgeLabelColor: { color: "#64748b" },
       stagePadding: 50,
       labelDensity: isVeryLargeGraph ? 0.03 : (isLargeGraph ? 0.07 : 0.3),
       labelGridCellSize: isVeryLargeGraph ? 250 : (isLargeGraph ? 180 : 120),
@@ -405,6 +422,12 @@ const KnowledgeGraph = {
   },
   
   setupInteractions() {
+    // Create tooltip element for edge metadata
+    this.edgeTooltip = document.createElement("div")
+    this.edgeTooltip.className = "fixed z-50 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-sm pointer-events-none hidden"
+    this.edgeTooltip.style.cssText = "max-width: 280px; transition: opacity 0.15s ease;"
+    document.body.appendChild(this.edgeTooltip)
+    
     // Node click handler
     this.renderer.on("clickNode", ({ node }) => {
       const attrs = this.graph.getNodeAttributes(node)
@@ -418,7 +441,9 @@ const KnowledgeGraph = {
     // Hover highlighting using reducers (like in example3)
     this.renderer.on("enterNode", ({ node }) => {
       this.hoveredNode = node
+      this.hoveredEdge = null
       this.hoveredNeighbors = new Set(this.graph.neighbors(node))
+      this.hideEdgeTooltip()
       this.renderer.refresh({ skipIndexation: true })
     })
     
@@ -426,6 +451,42 @@ const KnowledgeGraph = {
       this.hoveredNode = null
       this.hoveredNeighbors.clear()
       this.renderer.refresh({ skipIndexation: true })
+    })
+    
+    // Edge hover for tooltip
+    this.renderer.on("enterEdge", ({ edge, event }) => {
+      if (this.hoveredNode) return // Don't show tooltip when hovering a node
+      
+      this.hoveredEdge = edge
+      const attrs = this.graph.getEdgeAttributes(edge)
+      const source = this.graph.source(edge)
+      const target = this.graph.target(edge)
+      const sourceAttrs = this.graph.getNodeAttributes(source)
+      const targetAttrs = this.graph.getNodeAttributes(target)
+      
+      this.showEdgeTooltip(event, {
+        type: attrs.edgeType,
+        label: attrs.label,
+        metadata: attrs.metadata,
+        sourceName: sourceAttrs.label,
+        targetName: targetAttrs.label
+      })
+      
+      this.renderer.refresh({ skipIndexation: true })
+    })
+    
+    this.renderer.on("leaveEdge", () => {
+      this.hoveredEdge = null
+      this.hideEdgeTooltip()
+      this.renderer.refresh({ skipIndexation: true })
+    })
+    
+    // Update tooltip position on mouse move
+    this.el.addEventListener("mousemove", (e) => {
+      if (this.hoveredEdge && this.edgeTooltip && !this.edgeTooltip.classList.contains("hidden")) {
+        this.edgeTooltip.style.left = `${e.clientX + 12}px`
+        this.edgeTooltip.style.top = `${e.clientY + 12}px`
+      }
     })
     
     // Set up reducers for hover effects
@@ -444,16 +505,69 @@ const KnowledgeGraph = {
     })
     
     this.renderer.setSetting("edgeReducer", (edge, data) => {
+      // Highlight hovered edge
+      if (this.hoveredEdge === edge) {
+        return { ...data, color: "#0050AA", size: 2, zIndex: 2, forceLabel: true }
+      }
+      
       if (this.hoveredNode) {
         const source = this.graph.source(edge)
         const target = this.graph.target(edge)
         if (source === this.hoveredNode || target === this.hoveredNode) {
-          return { ...data, color: "#64748b", size: 1.5, zIndex: 1 }
+          return { ...data, color: "#64748b", size: 1.5, zIndex: 1, forceLabel: true }
         }
         return { ...data, hidden: true }
       }
       return data
     })
+  },
+  
+  showEdgeTooltip(event, edgeData) {
+    if (!this.edgeTooltip) return
+    
+    const { type, label, metadata, sourceName, targetName } = edgeData
+    
+    // Build tooltip content
+    let html = `
+      <div class="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+        <span class="w-2 h-2 rounded-full bg-blue-500"></span>
+        ${label || type || "Relación"}
+      </div>
+      <div class="text-xs text-gray-500 mb-2">
+        <span class="text-gray-700">${sourceName}</span>
+        <span class="mx-1">→</span>
+        <span class="text-gray-700">${targetName}</span>
+      </div>
+    `
+    
+    // Add metadata if present
+    if (metadata && Object.keys(metadata).length > 0) {
+      html += `<div class="border-t border-gray-100 pt-2 mt-2 space-y-1">`
+      for (const [key, value] of Object.entries(metadata)) {
+        if (value !== null && value !== undefined && value !== "") {
+          const formattedKey = key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
+          const formattedValue = typeof value === "object" ? JSON.stringify(value) : value
+          html += `
+            <div class="flex justify-between gap-4">
+              <span class="text-gray-500">${formattedKey}:</span>
+              <span class="text-gray-900 font-medium text-right">${formattedValue}</span>
+            </div>
+          `
+        }
+      }
+      html += `</div>`
+    }
+    
+    this.edgeTooltip.innerHTML = html
+    this.edgeTooltip.style.left = `${event.clientX + 12}px`
+    this.edgeTooltip.style.top = `${event.clientY + 12}px`
+    this.edgeTooltip.classList.remove("hidden")
+  },
+  
+  hideEdgeTooltip() {
+    if (this.edgeTooltip) {
+      this.edgeTooltip.classList.add("hidden")
+    }
   },
   
   addLegend(container, nodes) {
