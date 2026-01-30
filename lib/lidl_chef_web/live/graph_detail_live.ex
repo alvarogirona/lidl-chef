@@ -16,7 +16,7 @@ defmodule LidlChefWeb.GraphDetailLive do
      |> assign(:graph_data, nil)
      |> assign(:loading, true)
      |> assign(:error, nil)
-     |> assign(:depth, 2)
+     |> assign(:depth, 1)
      |> assign(:selected_node, nil)
      |> assign(:selected_node_relationships, [])
      |> load_entity_and_graph()}
