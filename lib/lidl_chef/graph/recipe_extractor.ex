@@ -66,6 +66,7 @@ defmodule LidlChef.Graph.RecipeExtractor do
     - Herramienta (por ejemplo, horno, sartén, batidora)
     - Categoría: Etiquetas o categorías de la receta (por ejemplo, "ensalada", "postre", "vegano")
     - Nutriente: Información nutricional (calorías, proteínas, carbohidratos, grasas)
+    - Origin: País o región de origen de la receta, si está disponible
 
     Relaciones:
     - Relación "USES_INGREDIENT" entre Receta y productTitle
@@ -73,6 +74,7 @@ defmodule LidlChef.Graph.RecipeExtractor do
     - Relación "APPLIES_METHOD" entre Receta y Método de cocción
     - Relación "BELONGS_TO_CATEGORY" entre Receta y Categoría
     - Relación "HAS_NUTRIENT" entre Receta y Nutriente
+    - Relación "HAS_ORIGIN" entre Receta y Origin
     - `strength` (1-10): Indica la relevancia o importancia de la relación en el contexto de la receta.
 
     Cada relación puede incluir metadatos adicionales si es relevante:
