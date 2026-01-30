@@ -1,25 +1,22 @@
 import Graph from "graphology";
 import Sigma from "sigma";
-import ForceSupervisor from "graphology-layout-force/worker";
 
 /**
  * Sigma.js Knowledge Graph Hook
  * 
- * Renders an interactive force-directed graph visualization
- * of product entities and their relationships using Sigma.js
- * for better performance with large graphs.
+ * Renders an interactive graph visualization of product entities 
+ * and their relationships using Sigma.js with a static radial layout
+ * optimized for large graphs.
  */
 const KnowledgeGraph = {
   mounted() {
     this.graphData = null
     this.graph = null
     this.renderer = null
-    this.layout = null
     this.hiddenTypes = new Set()
     this.rootNodeId = null
-    this.draggedNode = null
-    this.isDragging = false
-    this.allNodes = [] // Store all nodes for legend (not filtered)
+    this.hoveredNode = null
+    this.hoveredNeighbors = new Set()
     
     // Base color palette for known types
     this.baseColors = {
@@ -37,6 +34,7 @@ const KnowledgeGraph = {
       "wawiid": "#6b7280",
       "productline": "#ec4899",
       "receta": "#0050AA",
+      "título": "#0050AA",
       "other": "#94a3b8"
     }
     
@@ -100,10 +98,6 @@ const KnowledgeGraph = {
   },
   
   cleanup() {
-    if (this.layout) {
-      this.layout.kill()
-      this.layout = null
-    }
     if (this.renderer) {
       this.renderer.kill()
       this.renderer = null
@@ -129,11 +123,10 @@ const KnowledgeGraph = {
     
     // Identify the root/main node
     if (!this.rootNodeId) {
-      const productNode = nodes.find(n => 
-        n.type === "product" || 
-        n.type === "producterpname" || 
-        n.type === "producttitle"
-      )
+      const productNode = nodes.find(n => {
+        const t = (n.type || "").toLowerCase()
+        return t === "product" || t === "producterpname" || t === "producttitle"
+      })
       this.rootNodeId = productNode ? productNode.id : nodes[0].id
     }
     
@@ -153,9 +146,8 @@ const KnowledgeGraph = {
     })
     
     // Remove orphan nodes (nodes with no connections) except root node
-    // Build a set of nodes that have at least one connection
     const connectedNodeIds = new Set()
-    connectedNodeIds.add(this.rootNodeId) // Always keep root
+    connectedNodeIds.add(this.rootNodeId)
     filteredLinks.forEach(l => {
       const sourceId = typeof l.source === "object" ? l.source.id : l.source
       const targetId = typeof l.target === "object" ? l.target.id : l.target
@@ -163,11 +155,10 @@ const KnowledgeGraph = {
       connectedNodeIds.add(targetId)
     })
     
-    // Filter out orphan nodes
     filteredNodes = filteredNodes.filter(n => connectedNodeIds.has(n.id))
     filteredNodeIds = new Set(filteredNodes.map(n => n.id))
     
-    // Create the graph container and legend container
+    // Create the graph container
     const graphContainer = document.createElement("div")
     graphContainer.className = "relative w-full h-full"
     graphContainer.style.cssText = "position: relative; width: 100%; height: 100%;"
@@ -182,146 +173,213 @@ const KnowledgeGraph = {
     // Create graphology graph
     this.graph = new Graph()
     
-    // Build color scale for all types in the data (including dynamic ones)
+    // Build color scale for all types
     this.buildColorScale(nodes)
     
-    // Add nodes with initial positions using a spiral layout for better distribution
+    // Calculate positions using a grouped radial layout
+    const positions = this.calculateRadialLayout(filteredNodes, filteredLinks)
+    
+    // Add nodes with calculated positions
     const nodeCount = filteredNodes.length
     const isVeryLargeGraph = nodeCount > 500
     const isLargeGraph = nodeCount > 100
     
-    // Use spiral layout for large graphs - provides better initial distribution
-    filteredNodes.forEach((node, i) => {
-      let x, y
+    filteredNodes.forEach((node) => {
+      const nodeType = (node.type || "other").toLowerCase()
+      const isMainType = nodeType === "product" || nodeType === "producterpname" || 
+                         nodeType === "producttitle" || nodeType === "receta" || nodeType === "título"
       
-      if (node.id === this.rootNodeId) {
-        x = 0
-        y = 0
-      } else if (isVeryLargeGraph) {
-        // Spiral layout for very large graphs
-        const spiralFactor = 15 // Controls how tight the spiral is
-        const angle = i * 0.3 // Angle increment
-        const radius = spiralFactor * Math.sqrt(i)
-        x = radius * Math.cos(angle)
-        y = radius * Math.sin(angle)
-      } else {
-        // Circle layout with randomness for smaller graphs
-        const angle = (i * 2 * Math.PI) / nodeCount
-        const baseRadius = Math.max(300, Math.sqrt(nodeCount) * 30)
-        const radius = baseRadius + (Math.random() * 50)
-        x = radius * Math.cos(angle)
-        y = radius * Math.sin(angle)
+      const pos = positions.get(node.id) || { x: 0, y: 0 }
+      
+      // Adjust node size based on graph size
+      let nodeSize = isMainType ? 12 : 6
+      if (isVeryLargeGraph) {
+        nodeSize = isMainType ? 8 : 4
+      } else if (isLargeGraph) {
+        nodeSize = isMainType ? 10 : 5
       }
       
-      const nodeType = (node.type || "other").toLowerCase()
-      const isProduct = nodeType === "product" || nodeType === "producterpname" || nodeType === "producttitle" || nodeType === "receta"
-      
       this.graph.addNode(node.id, {
-        x: x,
-        y: y,
-        size: isProduct ? 15 : 8,
+        x: pos.x,
+        y: pos.y,
+        size: nodeSize,
         color: this.getColorForType(nodeType),
-        label: this.truncateLabel(node.name, 25),
-        fullLabel: node.name,
+        label: node.name || "",
         nodeType: nodeType,
         description: node.description
       })
     })
     
     // Add edges
-    filteredLinks.forEach((link, i) => {
+    filteredLinks.forEach((link) => {
       const sourceId = typeof link.source === "object" ? link.source.id : link.source
       const targetId = typeof link.target === "object" ? link.target.id : link.target
       
-      // Avoid duplicate edges
       const edgeKey = `${sourceId}-${targetId}`
       if (!this.graph.hasEdge(edgeKey) && !this.graph.hasEdge(`${targetId}-${sourceId}`)) {
         try {
           this.graph.addEdgeWithKey(edgeKey, sourceId, targetId, {
-            size: Math.max(1, (link.strength || 5) / 5),
-            color: "#cbd5e1",
-            edgeType: link.type,
-            label: link.type ? link.type.replace(/_/g, " ") : ""
+            size: 0.5,
+            color: "#e2e8f0",
+            edgeType: link.type
           })
         } catch (e) {
-          // Node might not exist if filtered
+          // Node might not exist
         }
       }
     })
     
-    // Create the Sigma renderer with settings optimized for graph size
+    // Create the Sigma renderer
     this.renderer = new Sigma(this.graph, sigmaContainer, {
-      minCameraRatio: 0.05,
-      maxCameraRatio: 4,
-      renderEdgeLabels: !isLargeGraph, // Disable edge labels for large graphs
-      defaultEdgeType: "line", // Use simple lines for better performance
-      // Higher threshold = fewer labels shown (less clutter)
-      labelRenderedSizeThreshold: isVeryLargeGraph ? 20 : (isLargeGraph ? 12 : 8),
+      minCameraRatio: 0.02,
+      maxCameraRatio: 5,
+      renderEdgeLabels: false,
+      defaultEdgeType: "line",
+      labelRenderedSizeThreshold: isVeryLargeGraph ? 15 : (isLargeGraph ? 10 : 6),
       labelFont: "Inter, system-ui, sans-serif",
       labelSize: isVeryLargeGraph ? 10 : 12,
       labelWeight: "500",
-      edgeLabelFont: "Inter, system-ui, sans-serif",
-      edgeLabelSize: 9,
+      labelColor: { color: "#1e293b" },
       stagePadding: 50,
-      // Reduce node size for very large graphs
-      defaultNodeColor: "#94a3b8",
-      labelDensity: isVeryLargeGraph ? 0.05 : (isLargeGraph ? 0.1 : 0.5),
-      labelGridCellSize: isVeryLargeGraph ? 200 : (isLargeGraph ? 150 : 100),
+      labelDensity: isVeryLargeGraph ? 0.03 : (isLargeGraph ? 0.07 : 0.3),
+      labelGridCellSize: isVeryLargeGraph ? 250 : (isLargeGraph ? 180 : 120),
+      zIndex: true,
     })
     
-    // Create force layout with settings optimized for graph size
-    // Different settings for small (<100), large (100-500), and very large (>500) graphs
-    let layoutSettings
-    if (isVeryLargeGraph) {
-      layoutSettings = {
-        attraction: 0.00001,
-        repulsion: 1.5,
-        gravity: 0.00001,
-        inertia: 0.5,
-        maxMove: 20
-      }
-    } else if (isLargeGraph) {
-      layoutSettings = {
-        attraction: 0.0001,
-        repulsion: 0.8,
-        gravity: 0.00005,
-        inertia: 0.6,
-        maxMove: 50
-      }
-    } else {
-      layoutSettings = {
-        attraction: 0.0005,
-        repulsion: 0.15,
-        gravity: 0.0001,
-        inertia: 0.6,
-        maxMove: 200
-      }
-    }
+    // Setup interactions
+    this.setupInteractions()
     
-    this.layout = new ForceSupervisor(this.graph, {
-      isNodeFixed: (_, attr) => attr.highlighted,
-      settings: layoutSettings
+    // Add legend
+    this.addLegend(graphContainer, nodes)
+    
+    // Fit the camera to show all nodes
+    this.renderer.getCamera().animatedReset({ duration: 300 })
+  },
+  
+  /**
+   * Calculate positions using a grouped radial layout
+   * Groups nodes by type and arranges them in concentric rings
+   */
+  calculateRadialLayout(nodes, links) {
+    const positions = new Map()
+    const nodeCount = nodes.length
+    
+    // Build adjacency map for finding connected nodes
+    const adjacency = new Map()
+    nodes.forEach(n => adjacency.set(n.id, new Set()))
+    
+    links.forEach(l => {
+      const sourceId = typeof l.source === "object" ? l.source.id : l.source
+      const targetId = typeof l.target === "object" ? l.target.id : l.target
+      if (adjacency.has(sourceId)) adjacency.get(sourceId).add(targetId)
+      if (adjacency.has(targetId)) adjacency.get(targetId).add(sourceId)
     })
-    this.layout.start()
     
-    // Setup drag and drop
-    this.setupDragAndDrop()
+    // Group nodes by type
+    const nodesByType = new Map()
+    nodes.forEach(n => {
+      const nodeType = (n.type || "other").toLowerCase()
+      if (!nodesByType.has(nodeType)) {
+        nodesByType.set(nodeType, [])
+      }
+      nodesByType.get(nodeType).push(n)
+    })
     
-    // Setup node click handler
-    this.renderer.on("clickNode", ({ node }) => {
-      const attrs = this.graph.getNodeAttributes(node)
-      this.pushEvent("node-clicked", { 
-        id: node, 
-        name: attrs.fullLabel || attrs.label, 
-        type: attrs.nodeType 
+    // Define ring order - main types in center, others in outer rings
+    const typeOrder = [
+      "receta", "product", "producttitle", "producterpname", "título",
+      "category", "categoría", "categora",
+      "ingredient", "ingrediente",
+      "nutrient", "nutriente",
+      "allergen", "alérgeno",
+      "brand", "marca",
+      "certification", "certificación",
+      "origin", "origen",
+      "herramienta", "mtododecoccin",
+      "identifier", "wawiid", "productline"
+    ]
+    
+    // Sort types: ordered types first, then alphabetically
+    const sortedTypes = Array.from(nodesByType.keys()).sort((a, b) => {
+      const aIdx = typeOrder.indexOf(a)
+      const bIdx = typeOrder.indexOf(b)
+      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
+      if (aIdx !== -1) return -1
+      if (bIdx !== -1) return 1
+      return a.localeCompare(b)
+    })
+    
+    // Calculate base spacing based on number of nodes
+    const baseSpacing = Math.max(15, Math.min(50, 800 / Math.sqrt(nodeCount)))
+    
+    let currentRing = 0
+    const mainTypes = new Set(["receta", "product", "producttitle", "producterpname", "título"])
+    
+    sortedTypes.forEach((type, typeIndex) => {
+      const typeNodes = nodesByType.get(type)
+      const isMainType = mainTypes.has(type)
+      
+      if (isMainType && typeNodes.length > 50) {
+        // For large main type groups, use a filled circle layout
+        this.positionNodesInFilledCircle(typeNodes, positions, 0, 0, baseSpacing * 0.8)
+      } else if (isMainType) {
+        // Small main type - place in center area
+        const ringRadius = baseSpacing * 2 * (currentRing + 1)
+        this.positionNodesInRing(typeNodes, positions, ringRadius, 0, Math.PI * 2)
+        currentRing++
+      } else {
+        // Other types - place in outer rings, each type gets a segment
+        const segmentAngle = (Math.PI * 2) / Math.max(1, sortedTypes.length - mainTypes.size)
+        const typeSegmentIndex = typeIndex - Array.from(mainTypes).filter(t => nodesByType.has(t)).length
+        const startAngle = typeSegmentIndex * segmentAngle
+        const endAngle = startAngle + segmentAngle * 0.9
+        
+        // Multiple rings for this type if many nodes
+        const nodesPerRing = Math.max(5, Math.ceil(Math.sqrt(typeNodes.length) * 2))
+        const rings = Math.ceil(typeNodes.length / nodesPerRing)
+        
+        for (let ring = 0; ring < rings; ring++) {
+          const ringNodes = typeNodes.slice(ring * nodesPerRing, (ring + 1) * nodesPerRing)
+          const ringRadius = baseSpacing * (4 + currentRing + ring * 1.5)
+          this.positionNodesInRing(ringNodes, positions, ringRadius, startAngle, endAngle)
+        }
+      }
+    })
+    
+    return positions
+  },
+  
+  /**
+   * Position nodes in a ring segment
+   */
+  positionNodesInRing(nodes, positions, radius, startAngle, endAngle) {
+    const angleStep = (endAngle - startAngle) / Math.max(1, nodes.length)
+    nodes.forEach((node, i) => {
+      const angle = startAngle + angleStep * (i + 0.5)
+      positions.set(node.id, {
+        x: radius * Math.cos(angle),
+        y: radius * Math.sin(angle)
       })
     })
+  },
+  
+  /**
+   * Position nodes in a filled circle using sunflower pattern
+   * This provides optimal packing without overlaps
+   */
+  positionNodesInFilledCircle(nodes, positions, centerX, centerY, spacing) {
+    const goldenAngle = Math.PI * (3 - Math.sqrt(5)) // ~137.5 degrees
     
-    // Setup hover highlighting
-    this.setupHoverHighlighting()
-    
-    // Add legend using ALL nodes (not filtered) so hidden types remain visible
-    this.addLegend(graphContainer, nodes)
+    nodes.forEach((node, i) => {
+      // Sunflower/Fermat spiral pattern
+      const radius = spacing * Math.sqrt(i + 1)
+      const angle = i * goldenAngle
+      
+      positions.set(node.id, {
+        x: centerX + radius * Math.cos(angle),
+        y: centerY + radius * Math.sin(angle)
+      })
+    })
   },
   
   // Build color scale dynamically for all types in the data
@@ -332,7 +390,6 @@ const KnowledgeGraph = {
       allTypes.add(nodeType)
     })
     
-    // Assign colors to any types not in base colors
     allTypes.forEach(type => {
       if (!this.colorScale[type]) {
         this.colorScale[type] = this.dynamicColorPalette[this.dynamicColorIndex % this.dynamicColorPalette.length]
@@ -341,99 +398,74 @@ const KnowledgeGraph = {
     })
   },
   
-  // Get color for a type, with fallback
+  // Get color for a type
   getColorForType(type) {
     const normalizedType = (type || "other").toLowerCase()
     return this.colorScale[normalizedType] || this.colorScale["other"] || "#94a3b8"
   },
   
-  setupDragAndDrop() {
-    // On mouse down on a node - enable drag mode
-    this.renderer.on("downNode", (e) => {
-      this.isDragging = true
-      this.draggedNode = e.node
-      this.graph.setNodeAttribute(this.draggedNode, "highlighted", true)
-      if (!this.renderer.getCustomBBox()) {
-        this.renderer.setCustomBBox(this.renderer.getBBox())
-      }
+  setupInteractions() {
+    // Node click handler
+    this.renderer.on("clickNode", ({ node }) => {
+      const attrs = this.graph.getNodeAttributes(node)
+      this.pushEvent("node-clicked", { 
+        id: node, 
+        name: attrs.label, 
+        type: attrs.nodeType 
+      })
     })
     
-    // On mouse move, update dragged node position
-    this.renderer.on("moveBody", ({ event }) => {
-      if (!this.isDragging || !this.draggedNode) return
-      
-      // Get new position of node
-      const pos = this.renderer.viewportToGraph(event)
-      
-      this.graph.setNodeAttribute(this.draggedNode, "x", pos.x)
-      this.graph.setNodeAttribute(this.draggedNode, "y", pos.y)
-      
-      // Prevent sigma from moving camera
-      event.preventSigmaDefault()
-      event.original.preventDefault()
-      event.original.stopPropagation()
-    })
-    
-    // On mouse up, reset dragging mode
-    const handleUp = () => {
-      if (this.draggedNode) {
-        this.graph.removeNodeAttribute(this.draggedNode, "highlighted")
-      }
-      this.isDragging = false
-      this.draggedNode = null
-    }
-    
-    this.renderer.on("upNode", handleUp)
-    this.renderer.on("upStage", handleUp)
-  },
-  
-  setupHoverHighlighting() {
-    let hoveredNode = null
-    let hoveredNeighbors = new Set()
-    
+    // Hover highlighting using reducers (like in example3)
     this.renderer.on("enterNode", ({ node }) => {
-      hoveredNode = node
-      hoveredNeighbors = new Set(this.graph.neighbors(node))
-      
-      // Update node reducers to dim non-connected nodes
-      this.renderer.setSetting("nodeReducer", (n, data) => {
-        if (n === hoveredNode || hoveredNeighbors.has(n)) {
-          return { ...data, zIndex: 1 }
-        }
-        return { ...data, color: "#e2e8f0", zIndex: 0 }
-      })
-      
-      // Update edge reducers to dim non-connected edges
-      this.renderer.setSetting("edgeReducer", (edge, data) => {
-        const source = this.graph.source(edge)
-        const target = this.graph.target(edge)
-        if (source === hoveredNode || target === hoveredNode) {
-          return { ...data, color: "#64748b", zIndex: 1 }
-        }
-        return { ...data, color: "#f1f5f9", zIndex: 0 }
-      })
+      this.hoveredNode = node
+      this.hoveredNeighbors = new Set(this.graph.neighbors(node))
+      this.renderer.refresh({ skipIndexation: true })
     })
     
     this.renderer.on("leaveNode", () => {
-      hoveredNode = null
-      hoveredNeighbors.clear()
-      
-      // Reset reducers
-      this.renderer.setSetting("nodeReducer", null)
-      this.renderer.setSetting("edgeReducer", null)
+      this.hoveredNode = null
+      this.hoveredNeighbors.clear()
+      this.renderer.refresh({ skipIndexation: true })
+    })
+    
+    // Set up reducers for hover effects
+    this.renderer.setSetting("nodeReducer", (node, data) => {
+      if (this.hoveredNode) {
+        if (node === this.hoveredNode) {
+          return { ...data, highlighted: true, zIndex: 2 }
+        }
+        if (this.hoveredNeighbors.has(node)) {
+          return { ...data, zIndex: 1 }
+        }
+        // Dim non-connected nodes
+        return { ...data, color: "#e2e8f0", label: "", zIndex: 0 }
+      }
+      return data
+    })
+    
+    this.renderer.setSetting("edgeReducer", (edge, data) => {
+      if (this.hoveredNode) {
+        const source = this.graph.source(edge)
+        const target = this.graph.target(edge)
+        if (source === this.hoveredNode || target === this.hoveredNode) {
+          return { ...data, color: "#64748b", size: 1.5, zIndex: 1 }
+        }
+        return { ...data, hidden: true }
+      }
+      return data
     })
   },
   
   addLegend(container, nodes) {
-    // Calculate type counts from ALL node data (use lowercase for consistency)
+    // Calculate type counts from ALL node data
     const typeCounts = {}
     nodes.forEach(n => {
       const nodeType = (n.type || "other").toLowerCase()
       typeCounts[nodeType] = (typeCounts[nodeType] || 0) + 1
     })
     
-    // Sort types: put main types first, then alphabetically
-    const priorityTypes = ["receta", "product", "producttitle", "producterpname", "ingredient", "allergen", "category"]
+    // Sort types
+    const priorityTypes = ["receta", "product", "producttitle", "producterpname", "título", "ingredient", "allergen", "category"]
     const existingTypes = Object.keys(typeCounts).sort((a, b) => {
       const aIdx = priorityTypes.indexOf(a)
       const bIdx = priorityTypes.indexOf(b)
@@ -465,14 +497,12 @@ const KnowledgeGraph = {
       const label = document.createElement("span")
       label.className = "text-xs text-gray-600"
       label.style.cssText = isHidden ? "text-decoration: line-through;" : ""
-      // Capitalize first letter for display
       const displayName = this.typeLabels[type] || (type.charAt(0).toUpperCase() + type.slice(1))
       label.textContent = `${displayName} (${typeCounts[type]})`
       
       item.appendChild(circle)
       item.appendChild(label)
       
-      // Click handler to toggle type visibility
       item.addEventListener("click", (e) => {
         e.stopPropagation()
         this.toggleType(type)
@@ -505,11 +535,6 @@ const KnowledgeGraph = {
         </div>
       </div>
     `
-  },
-  
-  truncateLabel(text, maxLength) {
-    if (!text) return ""
-    return text.length > maxLength ? text.substring(0, maxLength - 3) + "..." : text
   }
 }
 
