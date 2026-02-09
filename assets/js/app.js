@@ -24,7 +24,7 @@ import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/lidl_chef"
 import topbar from "../vendor/topbar"
-import { KnowledgeGraph } from "./knowledge_graph"
+import { KnowledgeGraph } from "./d3js-graph-canvas"
 
 // Custom hooks
 const ScrollToBottom = {
