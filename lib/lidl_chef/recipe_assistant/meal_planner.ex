@@ -351,7 +351,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     4. Incluye recetas ligeras para cenas y más contundentes para comidas
     5. Para cada receta, incluye nombre EXACTO y URL EXACTA del contexto
     6. Si el usuario te solicita 2 platos en la comida o cena, incluye dos recetas en cada una de esas comidas.
-    7. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como → http://localhost:4000/graph/xxx), crea un enlace usando EXACTAMENTE esa URL
+    7. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
 
     FORMATO DE RESPUESTA:
     ## Día 1 (Lunes)
@@ -373,7 +373,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     - SOLO usa recetas del CONTEXTO de la sección apropiada
     - NO inventes recetas ni URLs
     - Tienes #{length(breakfast_recipes)} desayunos, #{length(lunch_recipes)} comidas y #{length(dinner_recipes)} cenas disponibles - ¡ÚSALAS!
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato http://localhost:4000/graph/xxx - NO inventes IDs
+    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
     - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
 
     ===== RECETAS PARA DESAYUNO (#{length(breakfast_recipes)} disponibles) =====

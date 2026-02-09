@@ -9,7 +9,7 @@ defmodule LidlChef.RecipeIngredients do
   """
 
   alias LidlChef.Repo
-  alias Arcana.{Chunk, Graph.Entity}
+  alias Arcana.{Chunk, Graph.Entity, Graph.EntityMention}
   import Ecto.Query
   require Logger
 
@@ -36,6 +36,20 @@ defmodule LidlChef.RecipeIngredients do
     |> wrap_result()
   end
 
+  def get_ingredients(%{id: chunk_id}) when is_binary(chunk_id) do
+    Logger.debug("Processing map-based chunk with id: #{inspect(chunk_id, limit: :infinity)}")
+
+    chunk_id
+    |> find_recipe_entity()
+    |> traverse_ingredient_relationships()
+    |> wrap_result()
+  end
+
+  def get_ingredients(chunk) when is_map(chunk) do
+    Logger.warning("Chunk without id field: #{inspect(Map.keys(chunk))}")
+    {:ok, []}
+  end
+
   def get_ingredients(_), do: {:ok, []}
 
   @doc """
@@ -44,7 +58,9 @@ defmodule LidlChef.RecipeIngredients do
   If the chunk is a recipe with ingredients, appends a formatted list of
   available ingredients with their IDs for linking.
   """
-  def format_chunk_with_ingredients(%Chunk{} = chunk) do
+  def format_chunk_with_ingredients(chunk) when is_map(chunk) do
+    Logger.debug("Formatting chunk with ID: #{inspect(Map.get(chunk, :id))}")
+
     case get_ingredients(chunk) do
       {:ok, []} ->
         chunk.text
@@ -59,8 +75,6 @@ defmodule LidlChef.RecipeIngredients do
         """
     end
   end
-
-  def format_chunk_with_ingredients(chunk), do: chunk.text
 
   @doc """
   Formats multiple chunks with their ingredient information.
@@ -89,14 +103,38 @@ defmodule LidlChef.RecipeIngredients do
     |> Enum.uniq_by(& &1.id)
   end
 
-  # Private functions
+  defp find_recipe_entity(chunk_id) when is_binary(chunk_id) do
+    uuid_string = Ecto.UUID.load!(chunk_id)
+
+    Logger.debug("Looking for recipe entity with chunk_id: #{uuid_string}")
+
+    query =
+      from m in EntityMention,
+        join: e in assoc(m, :entity),
+        where: m.chunk_id == ^uuid_string,
+        where: e.type == "receta",
+        preload: [entity: {e, [source_relationships: :target]}]
+
+    case Repo.all(query) do
+      [] ->
+        Logger.debug("No recipe entity found for chunk #{uuid_string}")
+        nil
+
+      [mention] ->
+        entity = mention.entity
+        Logger.debug("Found recipe entity: #{entity.name} with #{length(entity.source_relationships)} relationships")
+        entity
+
+      mentions ->
+        entity = hd(mentions).entity
+        Logger.debug("Found #{length(mentions)} recipe entities for chunk, using: #{entity.name}")
+        entity
+    end
+  end
 
   defp find_recipe_entity(chunk_id) do
-    from(e in Entity,
-      where: e.chunk_id == ^chunk_id and e.type == "recipe",
-      preload: [source_relationships: :target]
-    )
-    |> Repo.one()
+    Logger.warning("Unexpected chunk_id type: #{inspect(chunk_id)}")
+    nil
   end
 
   defp traverse_ingredient_relationships(nil) do

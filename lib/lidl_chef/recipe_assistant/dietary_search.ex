@@ -52,8 +52,6 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     reranker_concurrency = Keyword.get(opts, :reranker_concurrency, 10)
     search_fn = Keyword.get(opts, :search_fn, &default_search/2)
 
-    IO.inspect(intent_info, label: "Intent info")
-
     chunks =
       search_and_rerank(
         question,
@@ -184,8 +182,7 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     {:ok, reranked} =
       Reranker.rerank(query, chunks,
         threshold: 2,
-        concurrency: concurrency,
-        base_url: "http://127.0.0.1:1234"
+        concurrency: concurrency
       )
 
     Logger.debug("[DietarySearch] Reranked #{length(chunks)} -> #{length(reranked)} chunks")
@@ -275,14 +272,14 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     3. Si una receta tiene ingredientes que no son #{dietary}, NO la recomiendes
     4. Explicar por qué cada receta recomendada es apta para #{dietary}
     5. Si el usuario especificó ingredientes preferidos, prioriza recetas que los incluyan
-    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como → http://localhost:4000/graph/xxx), crea un enlace usando EXACTAMENTE esa URL
+    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
 
     REGLAS:
     - SOLO recomienda recetas del CONTEXTO que sean #{dietary}
     - Copia nombre EXACTO y URL EXACTA
     - Si no hay recetas aptas, sugiérelo honestamente
     - Indica si alguna receta puede adaptarse fácilmente
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato http://localhost:4000/graph/xxx - NO inventes IDs
+    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
     - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
 
     ===== CONTEXTO (Recetas disponibles) =====
@@ -292,7 +289,6 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     PREGUNTA: "#{question}"
 
     Encuentra recetas #{dietary}#{meal_type_context} en el contexto y recomiéndalas.
-    Incluye enlaces SOLO a ingredientes que tienen URL en el contexto (→ http://localhost:4000/graph/xxx).
     NO inventes URLs ni IDs - usa SOLO las URLs que aparecen explícitamente en el contexto.
     """
   end

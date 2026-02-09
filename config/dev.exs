@@ -2,11 +2,11 @@ import Config
 
 # Configure your database
 config :lidl_chef, LidlChef.Repo,
-  username: "postgres",
-  password: "postgres",
-  hostname: "localhost",
-  port: 5431,
-  database: "lidl_chef_dev",
+  username: System.get_env("DATABASE_USER", "postgres"),
+  password: System.get_env("DATABASE_PASSWORD", "postgres"),
+  hostname: System.get_env("DATABASE_HOST", "localhost"),
+  port: String.to_integer(System.get_env("DATABASE_PORT", "5431")),
+  database: System.get_env("DATABASE_NAME", "lidl_chef_dev"),
   stacktrace: true,
   show_sensitive_data_on_connection_error: true,
   pool_size: 10

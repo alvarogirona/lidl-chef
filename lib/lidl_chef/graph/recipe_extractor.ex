@@ -11,13 +11,13 @@ defmodule LidlChef.Graph.RecipeExtractor do
       Arcana.ingest(text,
         repo: Repo,
         graph: true,
-        extractor: LidlChef.Graph.RecipeExtractor
+        extractor: {LidlChef.Graph.RecipeExtractor, []}
       )
 
   ## Configuration
 
       config :arcana, :graph,
-        extractor: LidlChef.Graph.RecipeExtractor
+        extractor: {LidlChef.Graph.RecipeExtractor, []}
 
   The LLM is automatically injected from the global `:arcana, :llm` config.
   """
@@ -50,61 +50,6 @@ defmodule LidlChef.Graph.RecipeExtractor do
 
       {result, extracted_data_info}
     end)
-  end
-
-  def build_recipe_extraction_prompt(text) do
-    """
-    Extrae las siguientes entidades y relaciones del texto de la receta proporcionada:
-
-    ## Receta a analizar:
-    #{text}
-
-    Entidades:
-    - Receta: El nombre o título de la receta
-    - productTitle: Ingrediente utilizado en la receta (por ejemplo, tomate, pollo, arroz)
-    - Método de cocción (por ejemplo, hornear, freír, hervir)
-    - Herramienta (por ejemplo, horno, sartén, batidora)
-    - Categoría: Etiquetas o categorías de la receta (por ejemplo, "ensalada", "postre", "vegano")
-    - Nutriente: Información nutricional (calorías, proteínas, carbohidratos, grasas)
-    - Origin: País o región de origen de la receta, si está disponible
-
-    Relaciones:
-    - Relación "USES_INGREDIENT" entre Receta y productTitle
-    - Relación "EMPLOYS_TOOL" entre Receta y Herramienta
-    - Relación "APPLIES_METHOD" entre Receta y Método de cocción
-    - Relación "BELONGS_TO_CATEGORY" entre Receta y Categoría
-    - Relación "HAS_NUTRIENT" entre Receta y Nutriente
-    - Relación "HAS_ORIGIN" entre Receta y Origin
-    - `strength` (1-10): Indica la relevancia o importancia de la relación en el contexto de la receta.
-
-    Cada relación puede incluir metadatos adicionales si es relevante:
-    - Por ejemplo, para la relación "USES_INGREDIENT", puede incluir la cantidad y unidad de la entidad ingrediente
-    - Los nutrientes deben extrarse como entidad (proteinas, carbohidratos, grasas, calorías) con su valor asociado en los metadatos de la relación "HAS_NUTRIENT".
-      - Por ejemplo: "25g de proteinas", la entidad proteinas (tipo nutriente) y en los metadatos de la relación HAS_NUTRIENT incluir {"value": 25, "unit": "g"}
-
-    ## Output format:
-    Return a JSON object with two arrays:
-
-    ```json
-    {
-      "entities": [
-        {"name": "Entity Name", "type": "type", "description": "Brief context"}
-      ],
-      "relationships": [
-        {
-          "source": "Source Entity",
-          "target": "Target Entity",
-          "type": "RELATIONSHIP_TYPE",
-          "description": "Brief description",
-          "strength": 9,
-          "metadata": {"some_metadata_key": "some_metadata_value", "another_key": 123}
-        }
-      ]
-    }
-    ```
-
-    Return only the JSON object, no other text.
-    """
   end
 
   defp system_prompt do
@@ -230,5 +175,60 @@ defmodule LidlChef.Graph.RecipeExtractor do
       source != target and
       MapSet.member?(entity_names, source) and
       MapSet.member?(entity_names, target)
+  end
+
+  def build_recipe_extraction_prompt(text) do
+    """
+    Extrae las siguientes entidades y relaciones del texto de la receta proporcionada:
+
+    ## Receta a analizar:
+    #{text}
+
+    Entidades:
+    - Receta: El nombre o título de la receta
+    - productTitle: Ingrediente utilizado en la receta (por ejemplo, tomate, pollo, arroz)
+    - Método de cocción (por ejemplo, hornear, freír, hervir)
+    - Herramienta (por ejemplo, horno, sartén, batidora)
+    - Categoría: Etiquetas o categorías de la receta (por ejemplo, "ensalada", "postre", "vegano")
+    - Nutriente: Información nutricional (calorías, proteínas, carbohidratos, grasas)
+    - Origin: País o región de origen de la receta, si está disponible
+
+    Relaciones:
+    - Relación "USES_INGREDIENT" entre Receta y productTitle
+    - Relación "EMPLOYS_TOOL" entre Receta y Herramienta
+    - Relación "APPLIES_METHOD" entre Receta y Método de cocción
+    - Relación "BELONGS_TO_CATEGORY" entre Receta y Categoría
+    - Relación "HAS_NUTRIENT" entre Receta y Nutriente
+    - Relación "HAS_ORIGIN" entre Receta y Origin
+    - `strength` (1-10): Indica la relevancia o importancia de la relación en el contexto de la receta.
+
+    Cada relación puede incluir metadatos adicionales si es relevante:
+    - Por ejemplo, para la relación "USES_INGREDIENT", puede incluir la cantidad y unidad de la entidad ingrediente
+    - Los nutrientes deben extrarse como entidad (proteinas, carbohidratos, grasas, calorías) con su valor asociado en los metadatos de la relación "HAS_NUTRIENT".
+      - Por ejemplo: "25g de proteinas", la entidad proteinas (tipo nutriente) y en los metadatos de la relación HAS_NUTRIENT incluir {"value": 25, "unit": "g"}
+
+    ## Output format:
+    Return a JSON object with two arrays:
+
+    ```json
+    {
+      "entities": [
+        {"name": "Entity Name", "type": "type", "description": "Brief context"}
+      ],
+      "relationships": [
+        {
+          "source": "Source Entity",
+          "target": "Target Entity",
+          "type": "RELATIONSHIP_TYPE",
+          "description": "Brief description",
+          "strength": 9,
+          "metadata": {"some_metadata_key": "some_metadata_value", "another_key": 123}
+        }
+      ]
+    }
+    ```
+
+    Return only the JSON object, no other text.
+    """
   end
 end

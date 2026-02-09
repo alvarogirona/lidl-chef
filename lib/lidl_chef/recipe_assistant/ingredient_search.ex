@@ -182,13 +182,13 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     3. Priorizar recetas que usen más ingredientes del usuario
     4. Para cada receta recomendada, indica qué ingredientes del usuario se usan
     5. Si faltan ingredientes para completar la receta, muestra una lista de compras
-    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como → http://localhost:4000/graph/xxx), crea un enlace usando EXACTAMENTE esa URL
+    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
 
     REGLAS ESTRICTAS:
     - SOLO recomienda recetas del CONTEXTO - NO inventes recetas
     - Copia el nombre EXACTO y la URL EXACTA de cada receta
     - Si una receta usa al menos 1 ingrediente del usuario, es válida
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato http://localhost:4000/graph/xxx - NO inventes IDs
+    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
     - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
 
     FORMATO REQUERIDO PARA CADA RECETA RECOMENDADA:
@@ -211,7 +211,6 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     Busca recetas en el contexto que usen: #{ingredients}
 
     Si encuentras recetas relevantes, recomiéndalas con entusiasmo.
-    Incluye enlaces SOLO a ingredientes que tienen URL en el contexto (→ http://localhost:4000/graph/xxx).
     NO inventes URLs ni IDs - usa SOLO las URLs que aparecen explícitamente en el contexto.
     Si no encuentras ninguna receta que use estos ingredientes, sugiere qué otros ingredientes podrían complementarlos.
     """

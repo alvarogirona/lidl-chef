@@ -147,14 +147,14 @@ defmodule LidlChef.Reranker do
     content = Map.get(choice, "content", "")
     reasoning_content = Map.get(choice, "reasoning_content", "")
 
-    Logger.info(
-      "[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}"
-    )
+    # Logger.info(
+    #   "[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}"
+    # )
 
     # Try to extract score from content first, then from reasoning
     score = parse_score_from_text(content) || parse_score_from_text(reasoning_content) || 0
 
-    Logger.info("[Reranker] Parsed score: #{score}")
+    # Logger.info("[Reranker] Parsed score: #{score}")
     score
   end
 
