@@ -36,7 +36,13 @@ defmodule LidlChefWeb.ProductSearchLive do
 
   @impl true
   def handle_info({:perform_search, query}, socket) do
-    case ProductSearch.search(query, graph: false, limit: 20) do
+    case ProductSearch.search(
+      query,
+      graph: true,
+      limit: 20,
+      entity_extractor: {LidlChef.Graph.ProductExtractor, []},
+      extractor: {LidlChef.Graph.ProductExtractor, []}
+    ) do
       {:ok, results} ->
         {:noreply,
          socket

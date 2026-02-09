@@ -51,7 +51,7 @@ defmodule LidlChef.IntentClassifier do
   Responde SOLO en este formato exacto (sin texto adicional):
   INTENT: <intent_name>
   INGREDIENTS: <ingredient1, ingredient2, ...> or NONE (in original language of the query)
-  FOOD_TYPE: <meal_type> or NONE
+  MEAL_TYPE: <meal_type> or NONE
   DIETARY: <restriction> or NONE
   DAYS: <number> or NONE
   ATTRIBUTES: <attribute1, attribute2, ...> or NONE
@@ -129,15 +129,7 @@ defmodule LidlChef.IntentClassifier do
         value -> String.split(value, ",") |> Enum.map(&String.trim/1)
       end
 
-    meal_type =
-      case Map.get(parsed, "MEAL_TYPE", "NONE") do
-        "NONE" -> nil
-        "breakfast" -> :breakfast
-        "lunch" -> :lunch
-        "dinner" -> :dinner
-        "snack" -> :snack
-        _ -> nil
-      end
+    meal_type = Map.get(parsed, "MEAL_TYPE", "NONE")
 
     dietary =
       case Map.get(parsed, "DIETARY", "NONE") do

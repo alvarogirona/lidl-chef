@@ -1,12 +1,10 @@
 defmodule LidlChef.RecipeAssistant.MealPlanner do
-  alias LidlChef.{LLM, Recipes, Repo, Reranker}
+  alias LidlChef.{LLM, Recipes, Repo, Reranker, RecipeIngredients}
   alias Arcana.Agent
   require Logger
 
   @meal_types [:breakfast, :lunch, :dinner]
-  # How many recipes to fetch per query during search
   @recipes_per_query 10
-  # Multiplier for final selection (2x the days needed)
   @selection_multiplier 3
 
   def run(question, intent_info, opts) do
@@ -335,7 +333,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     )
 
     """
-    Eres un asistente de Lidl Chef especializado en planificación de menús.
+    Eres un asistente de Lidl especializado en planificación de menús.
 
     ⚠️ RESPONDE SIEMPRE EN ESPAÑOL.
     #{dietary_note}
@@ -353,6 +351,7 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     4. Incluye recetas ligeras para cenas y más contundentes para comidas
     5. Para cada receta, incluye nombre EXACTO y URL EXACTA del contexto
     6. Si el usuario te solicita 2 platos en la comida o cena, incluye dos recetas en cada una de esas comidas.
+    7. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como → http://localhost:4000/graph/xxx), crea un enlace usando EXACTAMENTE esa URL
 
     FORMATO DE RESPUESTA:
     ## Día 1 (Lunes)
@@ -374,6 +373,8 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     - SOLO usa recetas del CONTEXTO de la sección apropiada
     - NO inventes recetas ni URLs
     - Tienes #{length(breakfast_recipes)} desayunos, #{length(lunch_recipes)} comidas y #{length(dinner_recipes)} cenas disponibles - ¡ÚSALAS!
+    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato http://localhost:4000/graph/xxx - NO inventes IDs
+    - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
 
     ===== RECETAS PARA DESAYUNO (#{length(breakfast_recipes)} disponibles) =====
     #{breakfast_text}
@@ -397,6 +398,6 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
   end
 
   defp format_recipes_section(chunks, _section_name) do
-    Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    RecipeIngredients.format_chunks_with_ingredients(chunks)
   end
 end

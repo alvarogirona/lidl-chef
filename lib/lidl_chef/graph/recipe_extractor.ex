@@ -149,11 +149,29 @@ defmodule LidlChef.Graph.RecipeExtractor do
 
   defp normalize_entity(entity) when is_map(entity) do
     %{
-      name: Map.get(entity, "name"),
+      name: truncate_string(Map.get(entity, "name"), 250),
       type: normalize_type(Map.get(entity, "type")),
       description: Map.get(entity, "description")
     }
   end
+
+  @doc """
+  Truncate a string to a maximum length to fit database column constraints.
+
+  Entity names are limited to 255 characters in the database, so we truncate
+  to 250 to be safe and add ellipsis if truncated.
+  """
+  defp truncate_string(nil, _max_length), do: nil
+
+  defp truncate_string(str, max_length) when is_binary(str) do
+    if String.length(str) > max_length do
+      String.slice(str, 0, max_length - 3) <> "..."
+    else
+      str
+    end
+  end
+
+  defp truncate_string(str, _max_length), do: str
 
   defp normalize_type(nil), do: "other"
 
@@ -167,8 +185,8 @@ defmodule LidlChef.Graph.RecipeExtractor do
 
   defp normalize_relationship(rel) when is_map(rel) do
     %{
-      source: Map.get(rel, "source"),
-      target: Map.get(rel, "target"),
+      source: truncate_string(Map.get(rel, "source"), 250),
+      target: truncate_string(Map.get(rel, "target"), 250),
       type: normalize_relationship_type(Map.get(rel, "type")),
       description: Map.get(rel, "description"),
       strength: normalize_strength(Map.get(rel, "strength")),

@@ -67,59 +67,57 @@ defmodule LidlChef.Graph.ProductExtractor do
   """
   @spec build_product_extraction_prompt(String.t()) :: String.t()
   def build_product_extraction_prompt(text) do
+    # Translate this prompt to spanish, but not the entities, relationship types or output format
     """
-    From a LIDL product catalog entry, extract entities and relationships from this product catalog entry.
+    Del catalogo de productos de LIDL, extrae entidades y relaciones de esta entrada del catalogo de productos.
+    From the LIDL product catalog, extract entities and relationships from this product catalog entry.
 
-    ## Text to analyze:
+    ## Texto a analizar:
     #{text}
 
-    ## Entity types for product catalog:
-    - wawiId: Internal product identifier
-    - productErpName: The main product based on its erpName (e.g., "Croissant brioche", "Ensalada de pasta rúcula"). A product with the same wawiId may have multiple erpNames.
-    - productTitle: The title of a product. A product with the same wawiId/ERPName may have multiple titles.
-    - brand: Brand or manufacturer name if mentioned
-    - ingredient: Individual ingredients (e.g., "harina de trigo", "azúcar", "aceite de girasol")
-    - allergen: Allergens present in the product (e.g., "gluten", "leche", "huevos", "frutos de cáscara")
-    - origin: Geographic origin or production location (e.g., "España", "Andalucía")
-    - certification: Certifications or quality standards (e.g., "RSPO", "Ecológico", "ISO")
-    - category: Product category or line (e.g., "Food", "Bakery", "Fresh")
-    - identifier: Internal product codes or identifiers (e.g., Wawi ID)
-    - nutrient: Nutritional components or claims (e.g., "proteínas", "carbohidratos")
+    ## Tipos de entidades para el catalogo de productos:
+    - wawiId: Identificador interno del producto
+    - productErpName: El producto principal que se vende basado en su erpName (ejemplo, "Croissant brioche", "Ensalada de pasta rúcula").
+    - productTitle: El título de un producto. Múltiples erpNames pueden compartir el mismo título.
+    - brand: Nombre de la marca o fabricante si se menciona
+    - ingredient: Ingredientes individuales (ejemplo, "harina de trigo", "azúcar", "aceite de girasol")
+    - allergen: Alérgenos presentes en el producto (ejemplo, "gluten", "leche", "huevos", "frutos de cáscara")
+    - origin: Origen geográfico o lugar de producción (ejemplo, "España", "Andalucía")
+    - certification: Certificaciones o estándares de calidad (ejemplo, "RSPO", "Ecológico", "ISO")
+    - category: Categoría o línea de producto (ejemplo, "Alimentación", "Panadería", "Fresco")
+    - identifier: Códigos o identificadores internos del producto (ejemplo, Wawi ID)
+    - nutrient: Componentes nutricionales o declaraciones (ejemplo, "proteínas", "carbohidratos")
 
-    ## Relationship types to extract:
-    - HAS_WAWI_ID: ProductErpName entities have a wawiId.
-    - HAS_BRAND: Product has a specific brand
-    - BRAND_OF: Brand is the brand of the product, inverse relationship of HAS_BRAND
-    - HAS_TITLE: ProductErpName relationship to ProductTitle
-    - HAS_ERP_NAME: ProductTitle entity has a specific erpName
-    - CONTAINS_INGREDIENT: Product contains a specific ingredient
-    - CONTAINS_ALLERGEN: Product contains an allergen (must declare)
-    - CONTAINS: General containment relationship
-    - PRODUCED_IN: Product originates from a location
-    - HAS_CERTIFICATION: Product has a certification/standard
-    - BELONGS_TO_CATEGORY: Product belongs to a category
-    - HAS_NUTRIENT: Product contains nutritional component
-    - RELATED_TO: General relationship between entities
+    ## Tipos de relaciones a extraer:
+    - HAS_WAWI_ID: Las entidades ProductErpName tienen un wawiId.
+    - HAS_BRAND: El producto tiene una marca específica
+    - HAS_TITLE: Relación de ProductErpName a ProductTitle
+    - HAS_ERP_NAME: La entidad ProductTitle tiene un erpName específico
+    - CONTAINS_INGREDIENT: El producto contiene un ingrediente específico
+    - CONTAINS_ALLERGEN: El producto contiene un alérgeno (debe declararse)
+    - CONTAINS: Relación general de contención
+    - PRODUCED_IN: El producto se origina en una ubicación
+    - HAS_CERTIFICATION: El producto tiene una certificación/estándar
+    - BELONGS_TO_CATEGORY: El producto pertenece a una categoría
+    - HAS_NUTRIENT: El producto contiene un componente nutricional
+    - RELATED_TO: Relación general entre entidades
 
-    ## Instructions:
-    1. Extract the main product entity from the title
-    2. Identify all ingredients mentioned (especially in INGREDIENTES or Details section)
-    3. Extract allergens (in ALÉRGENOS section or allergen warnings)
-    4. Look for origin information (country, region, production location)
-    5. Extract certifications (RSPO, organic labels, quality standards)
-    6. Identify the product category/line
-    7. Extract the Wawi ID or other identifiers (from "Internal ID" line)
-    8. Create relationships showing how entities connect
-    9. Use strength 9-10 for explicit relationships (contains allergen, has ingredient)
-    10. Use strength 6-8 for contextual relationships (produced in, belongs to category)
+    Cada relación puede incluir metadatos adicionales si es relevante:
+    - Por ejemplo, para la relación "USES_INGREDIENT", puede incluir la cantidad y unidad de la entidad ingrediente
+    - Los nutrientes deben extrarse como entidad (proteinas, carbohidratos, grasas, calorías) con su valor asociado en los metadatos de la relación "HAS_NUTRIENT".
+      - Por ejemplo: "25g de proteinas", la entidad proteinas (tipo nutriente) y en los metadatos de la relación HAS_NUTRIENT incluir {"value": 25, "unit": "g"}
 
-    ## Important Spanish terms to recognize:
-    - "INGREDIENTES" = ingredients list
-    - "ALÉRGENOS" = allergens
-    - "contiene" = contains
-    - "puede contener" = may contain
-    - "sin" = without
-    - "procedente de" = from/originating from
+    ## Instrucciones:
+    1. Extrae la entidad principal del producto del título
+    2. Identifica todos los ingredientes mencionados (especialmente en la sección INGREDIENTES o Detalles)
+    3. Extrae los alérgenos (en la sección ALÉRGENOS o advertencias de alérgenos)
+    4. Busca información de origen (país, región, lugar de producción)
+    5. Extrae certificaciones (RSPO, etiquetas ecológicas, estándares de calidad)
+    6. Identifica la categoría/línea de producto
+    7. Extrae el Wawi ID u otros identificadores (de la línea "ID Interno"), esos están vinculados al productErpName.
+    8. Crea relaciones que muestren cómo se conectan las entidades
+    9. Usa strength 9-10 para relaciones explícitas (contiene alérgeno, tiene ingrediente)
+    10. Usa strength 6-8 para relaciones contextuales (producido en, pertenece a categoría)
 
     ## Output format:
     Return a JSON object with two arrays:
@@ -127,10 +125,21 @@ defmodule LidlChef.Graph.ProductExtractor do
     ```json
     {
       "entities": [
-        {"name": "Entity Name", "type": "type", "description": "Brief context"}
+        {
+          "name": "Entity Name",
+          "type": "type",
+          "description": "Brief context"
+        }
       ],
       "relationships": [
-        {"source": "Source Entity", "target": "Target Entity", "type": "RELATIONSHIP_TYPE", "description": "Brief description", "strength": 9}
+        {
+          "source": "Source Entity",
+          "target": "Target Entity",
+          "type": "RELATIONSHIP_TYPE",
+          "description": "Brief description",
+          "strength": 9,
+          "metadata": {"some_metadata_key": "some_metadata_value", "another_key": 123}
+        }
       ]
     }
     ```
@@ -141,11 +150,10 @@ defmodule LidlChef.Graph.ProductExtractor do
 
   defp system_prompt do
     """
-    You are a product catalog knowledge graph construction assistant. Your task is to extract
-    entities (products, ingredients, allergens, brands, origins) and their relationships from
-    product descriptions. Be precise and extract only clearly identifiable entities and
-    relationships. Focus on food safety information like allergens and ingredients.
-    Always return valid JSON.
+    Eres un asistente de extracción de entidades y relaciones para la construcción de un grafo de conocimiento del catálogo de productos. Tu tarea es extraer
+    entidades (productos, ingredientes, alérgenos, marcas, orígenes) y sus relaciones a partir de descripciones de productos. Sé preciso y extrae solo entidades y
+    relaciones claramente identificables. Concéntrate en la información de seguridad alimentaria como alérgenos e ingredientes.
+    Devuelve siempre JSON válido.
     """
   end
 
@@ -181,11 +189,29 @@ defmodule LidlChef.Graph.ProductExtractor do
 
   defp normalize_entity(entity) when is_map(entity) do
     %{
-      name: Map.get(entity, "name"),
+      name: truncate_string(Map.get(entity, "name"), 250),
       type: normalize_type(Map.get(entity, "type")),
       description: Map.get(entity, "description")
     }
   end
+
+  @doc """
+  Truncate a string to a maximum length to fit database column constraints.
+
+  Entity names are limited to 255 characters in the database, so we truncate
+  to 250 to be safe and add ellipsis if truncated.
+  """
+  defp truncate_string(nil, _max_length), do: nil
+
+  defp truncate_string(str, max_length) when is_binary(str) do
+    if String.length(str) > max_length do
+      String.slice(str, 0, max_length - 3) <> "..."
+    else
+      str
+    end
+  end
+
+  defp truncate_string(str, _max_length), do: str
 
   defp normalize_type(nil), do: "other"
 
@@ -199,8 +225,8 @@ defmodule LidlChef.Graph.ProductExtractor do
 
   defp normalize_relationship(rel) when is_map(rel) do
     %{
-      source: Map.get(rel, "source"),
-      target: Map.get(rel, "target"),
+      source: truncate_string(Map.get(rel, "source"), 250),
+      target: truncate_string(Map.get(rel, "target"), 250),
       type: normalize_relationship_type(Map.get(rel, "type")),
       description: Map.get(rel, "description"),
       strength: normalize_strength(Map.get(rel, "strength"))

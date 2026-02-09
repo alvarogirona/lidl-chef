@@ -1,5 +1,5 @@
 defmodule LidlChef.RecipeAssistant.IngredientSearch do
-  alias LidlChef.{LLM, Recipes, Repo}
+  alias LidlChef.{LLM, Recipes, Repo, RecipeIngredients}
   alias Arcana.Agent
   require Logger
 
@@ -162,7 +162,7 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
   end
 
   defp build_ingredient_prompt(chunks, question, intent_info) do
-    reference_material = Enum.map_join(chunks, "\n\n---\n\n", & &1.text)
+    reference_material = RecipeIngredients.format_chunks_with_ingredients(chunks)
     ingredients = Enum.join(intent_info.ingredients, ", ")
 
     Logger.debug(
@@ -182,22 +182,25 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     3. Priorizar recetas que usen más ingredientes del usuario
     4. Para cada receta recomendada, indica qué ingredientes del usuario se usan
     5. Si faltan ingredientes para completar la receta, muestra una lista de compras
+    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como → http://localhost:4000/graph/xxx), crea un enlace usando EXACTAMENTE esa URL
 
     REGLAS ESTRICTAS:
     - SOLO recomienda recetas del CONTEXTO - NO inventes recetas
     - Copia el nombre EXACTO y la URL EXACTA de cada receta
     - Si una receta usa al menos 1 ingrediente del usuario, es válida
+    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato http://localhost:4000/graph/xxx - NO inventes IDs
+    - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
 
     FORMATO REQUERIDO PARA CADA RECETA RECOMENDADA:
     ## [Nombre Exacto de la Receta] SIN LA URL QUE VA DESPUÉS
-    - **Ingredientes que tienes:** [lista los ingredientes disponibles del usuario que se usan]
-    - **Ingredientes adicionales:** [lista los que necesita comprar, si los hay]
+    - **Ingredientes que tienes:** [lista los ingredientes disponibles del usuario que se usan, con enlaces SOLO si aparecen en el contexto]
+    - **Ingredientes adicionales:** [lista los que necesita comprar con enlaces SOLO si aparecen en el contexto]
     - **Tiempo aprox:** [si está disponible en el contexto]
     - **Porciones:** [si está disponible en el contexto]
     - **Informacion nutricional:** [si está disponible en el contexto]
     - [Breve descripción atractiva de la receta y por qué es perfecta para el usuario]
-    - 🛒 **Lista de compras:** [solo si faltan ingredientes]
-    🔗 **Ver receta completa:** [URL EXACTA del contexto
+    - 🛒 **Lista de compras:** [ingredientes con enlaces SOLO si la URL aparece en el contexto]
+    🔗 **Ver receta completa:** [URL EXACTA del contexto]
 
     ===== CONTEXTO (Recetas disponibles) =====
     #{reference_material}
@@ -208,6 +211,8 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     Busca recetas en el contexto que usen: #{ingredients}
 
     Si encuentras recetas relevantes, recomiéndalas con entusiasmo.
+    Incluye enlaces SOLO a ingredientes que tienen URL en el contexto (→ http://localhost:4000/graph/xxx).
+    NO inventes URLs ni IDs - usa SOLO las URLs que aparecen explícitamente en el contexto.
     Si no encuentras ninguna receta que use estos ingredientes, sugiere qué otros ingredientes podrían complementarlos.
     """
   end

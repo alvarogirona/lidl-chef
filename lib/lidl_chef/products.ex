@@ -102,7 +102,8 @@ defmodule LidlChef.Products do
       collection: @collection,
       limit: limit,
       mode: mode,
-      graph: enable_graph
+      graph: true,
+      entity_extractor: {LidlChef.Graph.ProductSearchEntityExtractor, []}
     )
   end
 
