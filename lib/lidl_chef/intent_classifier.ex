@@ -23,11 +23,7 @@ defmodule LidlChef.IntentClassifier do
     general_search: "General recipe search or browsing"
   }
 
-  # Translate this prompt to spanish
   @classification_prompt """
-  Eres un clasificador de intenciones de recetas. Analiza la consulta del usuario y clasifícala en UNA de estas intenciones:
-
-
   Eres un clasificador de intenciones de recetas. Analiza la consulta del usuario y clasifícala en UNA de estas intenciones:
 
   1. INGREDIENT_SEARCH - El usuario menciona ingredientes específicos que tiene y quiere recetas.

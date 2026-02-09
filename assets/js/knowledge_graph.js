@@ -182,13 +182,15 @@ const KnowledgeGraph = {
     // Build color scale for all types
     this.buildColorScale(nodes)
     
-    // Calculate positions using a grouped radial layout
+    // Calculate positions using force-directed layout
     const positions = this.calculateRadialLayout(filteredNodes, filteredLinks)
     
     // Add nodes with calculated positions
     const nodeCount = filteredNodes.length
     const isVeryLargeGraph = nodeCount > 500
     const isLargeGraph = nodeCount > 100
+    
+    console.log(`Adding ${nodeCount} nodes to graph`)
     
     filteredNodes.forEach((node) => {
       const nodeType = (node.type || "other").toLowerCase()
@@ -215,6 +217,8 @@ const KnowledgeGraph = {
         description: node.description
       })
     })
+    
+    console.log(`Graph now has ${this.graph.order} nodes`)
     
     // Add edges
     filteredLinks.forEach((link) => {
@@ -274,14 +278,26 @@ const KnowledgeGraph = {
   },
   
   /**
-   * Calculate positions using a grouped radial layout
-   * Groups nodes by type and arranges them in concentric rings
+   * Calculate positions using a force-directed layout
+   * Similar to D3.js force simulation for better node distribution
    */
   calculateRadialLayout(nodes, links) {
     const positions = new Map()
     const nodeCount = nodes.length
     
-    // Build adjacency map for finding connected nodes
+    console.log(`Force layout: processing ${nodeCount} nodes and ${links.length} links`)
+    
+    // Initialize random positions around origin
+    nodes.forEach(node => {
+      positions.set(node.id, {
+        x: (Math.random() - 0.5) * 200,
+        y: (Math.random() - 0.5) * 200,
+        vx: 0,
+        vy: 0
+      })
+    })
+    
+    // Build adjacency map
     const adjacency = new Map()
     nodes.forEach(n => adjacency.set(n.id, new Set()))
     
@@ -292,111 +308,165 @@ const KnowledgeGraph = {
       if (adjacency.has(targetId)) adjacency.get(targetId).add(sourceId)
     })
     
-    // Group nodes by type
-    const nodesByType = new Map()
-    nodes.forEach(n => {
-      const nodeType = (n.type || "other").toLowerCase()
-      if (!nodesByType.has(nodeType)) {
-        nodesByType.set(nodeType, [])
-      }
-      nodesByType.get(nodeType).push(n)
-    })
+    // Node radius function
+    const getNodeRadius = (node) => {
+      const type = (node.type || "other").toLowerCase()
+      const mainTypes = new Set(["receta", "product", "producttitle", "producterpname", "título"])
+      return mainTypes.has(type) ? 25 : 15
+    }
     
-    // Define ring order - main types in center, others in outer rings
-    const typeOrder = [
-      "receta", "product", "producttitle", "producterpname", "título",
-      "category", "categoría", "categora",
-      "ingredient", "ingrediente",
-      "nutrient", "nutriente",
-      "allergen", "alérgeno",
-      "brand", "marca",
-      "certification", "certificación",
-      "origin", "origen",
-      "herramienta", "mtododecoccin",
-      "identifier", "wawiid", "productline"
-    ]
+    // Force simulation parameters - adjusted for better performance on large graphs
+    const iterations = nodeCount > 200 ? 150 : 250
+    const linkDistance = 100
+    const linkStrength = 0.3
+    const chargeStrength = -400
+    const centerStrength = 0.05
+    const collisionPadding = 5
     
-    // Sort types: ordered types first, then alphabetically
-    const sortedTypes = Array.from(nodesByType.keys()).sort((a, b) => {
-      const aIdx = typeOrder.indexOf(a)
-      const bIdx = typeOrder.indexOf(b)
-      if (aIdx !== -1 && bIdx !== -1) return aIdx - bIdx
-      if (aIdx !== -1) return -1
-      if (bIdx !== -1) return 1
-      return a.localeCompare(b)
-    })
-    
-    // Calculate base spacing based on number of nodes
-    const baseSpacing = Math.max(15, Math.min(50, 800 / Math.sqrt(nodeCount)))
-    
-    let currentRing = 0
-    const mainTypes = new Set(["receta", "product", "producttitle", "producterpname", "título"])
-    
-    sortedTypes.forEach((type, typeIndex) => {
-      const typeNodes = nodesByType.get(type)
-      const isMainType = mainTypes.has(type)
+    // Run simulation
+    for (let i = 0; i < iterations; i++) {
+      const alpha = 1 - (i / iterations) // Decay over time
       
-      if (isMainType && typeNodes.length > 50) {
-        // For large main type groups, use a filled circle layout
-        this.positionNodesInFilledCircle(typeNodes, positions, 0, 0, baseSpacing * 0.8)
-      } else if (isMainType) {
-        // Small main type - place in center area
-        const ringRadius = baseSpacing * 2 * (currentRing + 1)
-        this.positionNodesInRing(typeNodes, positions, ringRadius, 0, Math.PI * 2)
-        currentRing++
-      } else {
-        // Other types - place in outer rings, each type gets a segment
-        const segmentAngle = (Math.PI * 2) / Math.max(1, sortedTypes.length - mainTypes.size)
-        const typeSegmentIndex = typeIndex - Array.from(mainTypes).filter(t => nodesByType.has(t)).length
-        const startAngle = typeSegmentIndex * segmentAngle
-        const endAngle = startAngle + segmentAngle * 0.9
+      // Apply centering force
+      let centerX = 0, centerY = 0
+      nodes.forEach(node => {
+        const pos = positions.get(node.id)
+        centerX += pos.x
+        centerY += pos.y
+      })
+      centerX /= nodeCount
+      centerY /= nodeCount
+      
+      nodes.forEach(node => {
+        const pos = positions.get(node.id)
+        pos.vx -= (pos.x - 0) * centerStrength * alpha
+        pos.vy -= (pos.y - 0) * centerStrength * alpha
+      })
+      
+      // Apply link forces (spring forces)
+      links.forEach(link => {
+        const sourceId = typeof link.source === "object" ? link.source.id : link.source
+        const targetId = typeof link.target === "object" ? link.target.id : link.target
         
-        // Multiple rings for this type if many nodes
-        const nodesPerRing = Math.max(5, Math.ceil(Math.sqrt(typeNodes.length) * 2))
-        const rings = Math.ceil(typeNodes.length / nodesPerRing)
+        const source = positions.get(sourceId)
+        const target = positions.get(targetId)
         
-        for (let ring = 0; ring < rings; ring++) {
-          const ringNodes = typeNodes.slice(ring * nodesPerRing, (ring + 1) * nodesPerRing)
-          const ringRadius = baseSpacing * (4 + currentRing + ring * 1.5)
-          this.positionNodesInRing(ringNodes, positions, ringRadius, startAngle, endAngle)
+        if (!source || !target) return
+        
+        const dx = target.x - source.x
+        const dy = target.y - source.y
+        const distance = Math.sqrt(dx * dx + dy * dy) || 1
+        
+        const force = (distance - linkDistance) * linkStrength * alpha
+        const fx = (dx / distance) * force
+        const fy = (dy / distance) * force
+        
+        source.vx += fx
+        source.vy += fy
+        target.vx -= fx
+        target.vy -= fy
+      })
+      
+      // Apply charge forces (repulsion between all nodes)
+      // Use quadratic complexity only for smaller graphs
+      if (nodeCount < 300) {
+        for (let j = 0; j < nodes.length; j++) {
+          const nodeA = nodes[j]
+          const posA = positions.get(nodeA.id)
+          
+          for (let k = j + 1; k < nodes.length; k++) {
+            const nodeB = nodes[k]
+            const posB = positions.get(nodeB.id)
+            
+            const dx = posB.x - posA.x
+            const dy = posB.y - posA.y
+            const distanceSq = dx * dx + dy * dy
+            
+            if (distanceSq === 0 || distanceSq < 0.01) {
+              // Add small random displacement if nodes are at exact same position
+              posB.x += (Math.random() - 0.5) * 1
+              posB.y += (Math.random() - 0.5) * 1
+              continue
+            }
+            
+            // Clamp distance to avoid extreme forces
+            const clampedDistSq = Math.max(distanceSq, 1)
+            const distance = Math.sqrt(clampedDistSq)
+            const force = (chargeStrength * alpha) / clampedDistSq
+            const fx = (dx / distance) * force
+            const fy = (dy / distance) * force
+            
+            posA.vx -= fx
+            posA.vy -= fy
+            posB.vx += fx
+            posB.vy += fy
+          }
+        }
+        
+        // Apply collision forces
+        for (let j = 0; j < nodes.length; j++) {
+          const nodeA = nodes[j]
+          const posA = positions.get(nodeA.id)
+          const radiusA = getNodeRadius(nodeA) + collisionPadding
+          
+          for (let k = j + 1; k < nodes.length; k++) {
+            const nodeB = nodes[k]
+            const posB = positions.get(nodeB.id)
+            const radiusB = getNodeRadius(nodeB) + collisionPadding
+            
+            const dx = posB.x - posA.x
+            const dy = posB.y - posA.y
+            const distance = Math.sqrt(dx * dx + dy * dy)
+            const minDistance = radiusA + radiusB
+            
+            if (distance < minDistance && distance > 0) {
+              const force = (minDistance - distance) / distance * 0.5
+              const fx = dx * force
+              const fy = dy * force
+              
+              posA.x -= fx
+              posA.y -= fy
+              posB.x += fx
+              posB.y += fy
+            }
+          }
         }
       }
-    })
+      
+      // Update positions with velocity
+      nodes.forEach(node => {
+        const pos = positions.get(node.id)
+        
+        // Clamp velocity to prevent explosion
+        const maxVelocity = 50
+        pos.vx = Math.max(-maxVelocity, Math.min(maxVelocity, pos.vx))
+        pos.vy = Math.max(-maxVelocity, Math.min(maxVelocity, pos.vy))
+        
+        pos.x += pos.vx
+        pos.y += pos.vy
+        
+        // Check for NaN
+        if (isNaN(pos.x) || isNaN(pos.y)) {
+          pos.x = (Math.random() - 0.5) * 100
+          pos.y = (Math.random() - 0.5) * 100
+          pos.vx = 0
+          pos.vy = 0
+        }
+        
+        // Apply damping
+        pos.vx *= 0.8
+        pos.vy *= 0.8
+      })
+    }
+    
+    // Log sample positions for debugging
+    const sampleNode = nodes[0]
+    if (sampleNode) {
+      const samplePos = positions.get(sampleNode.id)
+      console.log(`Sample position for node ${sampleNode.id}:`, samplePos)
+    }
     
     return positions
-  },
-  
-  /**
-   * Position nodes in a ring segment
-   */
-  positionNodesInRing(nodes, positions, radius, startAngle, endAngle) {
-    const angleStep = (endAngle - startAngle) / Math.max(1, nodes.length)
-    nodes.forEach((node, i) => {
-      const angle = startAngle + angleStep * (i + 0.5)
-      positions.set(node.id, {
-        x: radius * Math.cos(angle),
-        y: radius * Math.sin(angle)
-      })
-    })
-  },
-  
-  /**
-   * Position nodes in a filled circle using sunflower pattern
-   * This provides optimal packing without overlaps
-   */
-  positionNodesInFilledCircle(nodes, positions, centerX, centerY, spacing) {
-    const goldenAngle = Math.PI * (3 - Math.sqrt(5)) // ~137.5 degrees
-    
-    nodes.forEach((node, i) => {
-      // Sunflower/Fermat spiral pattern
-      const radius = spacing * Math.sqrt(i + 1)
-      const angle = i * goldenAngle
-      
-      positions.set(node.id, {
-        x: centerX + radius * Math.cos(angle),
-        y: centerY + radius * Math.sin(angle)
-      })
-    })
   },
   
   // Build color scale dynamically for all types in the data
