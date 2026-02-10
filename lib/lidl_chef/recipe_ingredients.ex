@@ -9,7 +9,7 @@ defmodule LidlChef.RecipeIngredients do
   """
 
   alias LidlChef.Repo
-  alias Arcana.{Chunk, Graph.Entity, Graph.EntityMention}
+  alias Arcana.{Chunk, Graph.Entity, Graph.EntityMention, Graph.Relationship}
   import Ecto.Query
   require Logger
 
@@ -148,6 +148,7 @@ defmodule LidlChef.RecipeIngredients do
       |> Enum.filter(&(&1.type == "USES_INGREDIENT"))
       |> Enum.map(& &1.target)
       |> Enum.reject(&is_nil/1)
+      |> enrich_ingredients_with_erp()
 
     Logger.debug(
       "Recipe entity '#{entity.name}' has #{length(ingredients)} ingredients from #{length(relationships)} relationships"
@@ -156,13 +157,72 @@ defmodule LidlChef.RecipeIngredients do
     ingredients
   end
 
+  defp enrich_ingredients_with_erp(ingredients) do
+    ingredients
+    |> Enum.map(fn ingredient ->
+      erp_products = fetch_erp_products(ingredient.id)
+
+      Logger.debug("Ingredient '#{ingredient.name}' has #{length(erp_products)} ERP products")
+
+      Map.put(ingredient, :erp_products, erp_products)
+    end)
+  end
+
+  defp fetch_erp_products(ingredient_id) do
+    forward_relationships =
+      from(r in Relationship,
+        where: r.source_id == ^ingredient_id and r.type == "HAS_ERP_NAME",
+        preload: [:target]
+      )
+      |> Repo.all()
+      |> Enum.map(& &1.target)
+      |> Enum.reject(&is_nil/1)
+
+    inverse_relationships =
+      from(r in Relationship,
+        where: r.target_id == ^ingredient_id and r.type == "HAS_TITLE",
+        preload: [:source]
+      )
+      |> Repo.all()
+      |> Enum.map(& &1.source)
+      |> Enum.reject(&is_nil/1)
+
+    (forward_relationships ++ inverse_relationships)
+    |> Enum.uniq_by(& &1.id)
+    |> Enum.filter(&(&1.type == "producterpname"))
+    |> Enum.shuffle()
+    |> Enum.take(3)
+  end
+
   defp wrap_result(ingredients) when is_list(ingredients), do: {:ok, ingredients}
 
   defp format_ingredient_list(ingredients) do
     ingredients
-    |> Enum.map(fn ingredient ->
-      "  • #{ingredient.name} → http://localhost:4000/graph/#{ingredient.id}"
-    end)
+    |> Enum.map(&format_single_ingredient/1)
     |> Enum.join("\n")
+  end
+
+  defp format_single_ingredient(%{name: name, id: id, erp_products: erp_products})
+       when is_list(erp_products) and length(erp_products) > 0 do
+    erp_list =
+      erp_products
+      |> Enum.map(fn erp ->
+        "    - [#{erp.name}](http://localhost:4000/graph/#{erp.id})"
+      end)
+      |> Enum.join("\n")
+
+    """
+      • **#{name}** → [Ver ingrediente](http://localhost:4000/graph/#{id})
+    #{erp_list}
+    """
+    |> String.trim_trailing()
+  end
+
+  defp format_single_ingredient(%{name: name, id: id, erp_products: _}) do
+    "  • #{name} → [Ver ingrediente](http://localhost:4000/graph/#{id})"
+  end
+
+  defp format_single_ingredient(ingredient) do
+    "  • #{ingredient.name} → [Ver ingrediente](http://localhost:4000/graph/#{ingredient.id})"
   end
 end

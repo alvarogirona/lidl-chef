@@ -351,30 +351,67 @@ defmodule LidlChef.RecipeAssistant.MealPlanner do
     4. Incluye recetas ligeras para cenas y más contundentes para comidas
     5. Para cada receta, incluye nombre EXACTO y URL EXACTA del contexto
     6. Si el usuario te solicita 2 platos en la comida o cena, incluye dos recetas en cada una de esas comidas.
-    7. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
+    7. Para cada ingrediente, menciona siempre los productos específicos de Lidl (ERP) disponibles en el contexto
+
+    IMPORTANTE SOBRE LOS INGREDIENTES Y FORMATO:
+    - Cada ingrediente en el contexto muestra productos específicos disponibles en Lidl (ERP)
+    - Ejemplo del formato en el contexto:
+      "• **Aceite de oliva virgen extra** → [Ver ingrediente](URL)
+         - [Coosur Aceite Oliva Virgen Extra](URL)
+         - [Carbonell Aceite Oliva Virgen Extra](URL)"
+
+    FORMATO REQUERIDO PARA INGREDIENTES:
+    Cuando menciones ingredientes, DEBES usar este formato exacto:
+    • **[Nombre del ingrediente]**
+      - [Producto ERP 1 de Lidl](URL exacta del contexto)
+      - [Producto ERP 2 de Lidl](URL exacta del contexto)
+
+    - SIEMPRE copia los productos ERP EXACTOS que aparecen bajo cada ingrediente en el contexto
+    - NO escribas solo el nombre del ingrediente con un enlace genérico
+    - Los usuarios quieren saber EXACTAMENTE QUÉ comprar en Lidl, no ingredientes genéricos
+    - Si un ingrediente NO tiene productos ERP en el contexto, menciona solo el ingrediente sin subitems
 
     FORMATO DE RESPUESTA:
     ## Día 1 (Lunes)
+
     ### 🌅 **Desayuno**: [Nombre de Receta](URL) - breve descripción
     **Información nutricional** (si está disponible)
 
-    **Lista de ingredientes** (si está disponible)
+    **Ingredientes principales con productos Lidl:**
+    • **[Nombre del ingrediente 1]**
+      - [Producto ERP específico 1](URL exacta)
+      - [Producto ERP específico 2](URL exacta)
+    • **[Nombre del ingrediente 2]**
+      - [Producto ERP específico](URL exacta)
+
     ### 🍽️ **Comida**: [Nombre de Receta](URL) - breve descripción
     **Información nutricional** (si está disponible)
 
-    **Lista de ingredientes** (si está disponible)
+    **Ingredientes principales con productos Lidl:**
+    • **[Nombre del ingrediente 1]**
+      - [Producto ERP específico 1](URL exacta)
+      - [Producto ERP específico 2](URL exacta)
+    • **[Nombre del ingrediente 2]**
+      - [Producto ERP específico](URL exacta)
+
     ### 🌙 **Cena**: [Nombre de Receta](URL) - breve descripción
     **Información nutricional** (si está disponible)
 
-    **Lista de ingredientes** (si está disponible)
+    **Ingredientes principales con productos Lidl:**
+    • **[Nombre del ingrediente 1]**
+      - [Producto ERP específico 1](URL exacta)
+      - [Producto ERP específico 2](URL exacta)
+    • **[Nombre del ingrediente 2]**
+      - [Producto ERP específico](URL exacta)
+
     (Repetir para cada día)
 
     REGLAS:
     - SOLO usa recetas del CONTEXTO de la sección apropiada
     - NO inventes recetas ni URLs
     - Tienes #{length(breakfast_recipes)} desayunos, #{length(lunch_recipes)} comidas y #{length(dinner_recipes)} cenas disponibles - ¡ÚSALAS!
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
-    - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
+    - CRÍTICO: Para productos ERP, copia EXACTAMENTE los que aparecen en el contexto - NO inventes productos ni IDs
+    - Si un ingrediente NO tiene productos ERP listados, menciona solo el ingrediente genérico
 
     ===== RECETAS PARA DESAYUNO (#{length(breakfast_recipes)} disponibles) =====
     #{breakfast_text}

@@ -272,15 +272,42 @@ defmodule LidlChef.RecipeAssistant.DietarySearch do
     3. Si una receta tiene ingredientes que no son #{dietary}, NO la recomiendes
     4. Explicar por qué cada receta recomendada es apta para #{dietary}
     5. Si el usuario especificó ingredientes preferidos, prioriza recetas que los incluyan
-    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
+    6. Para cada receta, menciona los ingredientes disponibles en Lidl con sus productos específicos (ERP)
+    7. Cuando menciones ingredientes, siempre incluye los productos de Lidl listos para comprar
+
+    IMPORTANTE SOBRE LOS INGREDIENTES Y FORMATO:
+    - Cada ingrediente en el contexto muestra productos específicos disponibles en Lidl (ERP)
+    - Ejemplo del formato en el contexto:
+      "• **Aceite de oliva virgen extra** → [Ver ingrediente](URL)
+         - [Coosur Aceite Oliva Virgen Extra](URL)
+         - [Carbonell Aceite Oliva Virgen Extra](URL)"
+
+    FORMATO REQUERIDO PARA INGREDIENTES:
+    Cuando menciones ingredientes, DEBES usar este formato:
+    • **[Nombre del ingrediente]**
+      - [Producto ERP 1 de Lidl](URL exacta del contexto)
+      - [Producto ERP 2 de Lidl](URL exacta del contexto)
+
+    - SIEMPRE copia los productos ERP EXACTOS que aparecen bajo cada ingrediente en el contexto
+    - NO escribas solo el nombre del ingrediente con un enlace genérico
+    - Si un ingrediente NO tiene productos ERP en el contexto, menciona solo el ingrediente sin subitems
 
     REGLAS:
     - SOLO recomienda recetas del CONTEXTO que sean #{dietary}
-    - Copia nombre EXACTO y URL EXACTA
+    - Copia nombre EXACTO y URL EXACTA de las recetas
     - Si no hay recetas aptas, sugiérelo honestamente
     - Indica si alguna receta puede adaptarse fácilmente
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
-    - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
+    - CRÍTICO: Para productos ERP, copia EXACTAMENTE los que aparecen en el contexto - NO inventes productos ni IDs
+    - Si un ingrediente NO tiene productos ERP listados, menciona solo el ingrediente genérico
+
+    EJEMPLO DE FORMATO CORRECTO PARA INGREDIENTES:
+    **Ingredientes principales:**
+    • **Aceite de oliva**
+      - [Coosur Aceite Oliva Virgen Extra](http://localhost:4000/graph/abc123)
+      - [Carbonell Aceite Oliva Virgen Extra](http://localhost:4000/graph/def456)
+    • **Espinacas**
+      - [Espinacas frescas Lidl](http://localhost:4000/graph/ghi789)
+      - [Espinacas congeladas Iglo](http://localhost:4000/graph/jkl012)
 
     ===== CONTEXTO (Recetas disponibles) =====
     #{reference_material}

@@ -180,26 +180,65 @@ defmodule LidlChef.RecipeAssistant.IngredientSearch do
     1. Buscar en el CONTEXTO recetas que usen ALGUNOS de estos ingredientes
     2. Las recetas NO necesitan usar TODOS los ingredientes - con usar UNO o MÁS es suficiente
     3. Priorizar recetas que usen más ingredientes del usuario
-    4. Para cada receta recomendada, indica qué ingredientes del usuario se usan
-    5. Si faltan ingredientes para completar la receta, muestra una lista de compras
-    6. Cuando menciones ingredientes que tienen una URL en el CONTEXTO (marcados como [Ingrediente](http://localhost:4000/graph/xxx)), crea un enlace usando EXACTAMENTE esa URL
+    4. Para cada receta recomendada, indica qué ingredientes del usuario se usan con los productos ERP específicos
+    5. Si faltan ingredientes para completar la receta, muestra una lista de compras con productos ERP específicos
+    6. Para ingredientes adicionales, menciona siempre los productos de Lidl (ERP) disponibles en el contexto
+
+    IMPORTANTE SOBRE LOS INGREDIENTES Y FORMATO:
+    - Cada ingrediente en el contexto muestra productos específicos disponibles en Lidl (ERP)
+    - Ejemplo del formato en el contexto:
+      "• **Aceite de oliva virgen extra** → [Ver ingrediente](URL)
+         - [Coosur Aceite Oliva Virgen Extra](URL)
+         - [Carbonell Aceite Oliva Virgen Extra](URL)"
+
+    FORMATO REQUERIDO PARA INGREDIENTES:
+    Cuando menciones ingredientes, DEBES usar este formato exacto:
+    • **[Nombre del ingrediente]**
+      - [Producto ERP 1 de Lidl](URL exacta del contexto)
+      - [Producto ERP 2 de Lidl](URL exacta del contexto)
+
+    - SIEMPRE copia los productos ERP EXACTOS que aparecen bajo cada ingrediente en el contexto
+    - NO escribas solo el nombre del ingrediente con un enlace genérico
+    - En las listas ("Ingredientes adicionales", "Lista de compras"), usa este formato para cada ingrediente
+    - Si un ingrediente NO tiene productos ERP en el contexto, menciona solo el ingrediente sin subitems
 
     REGLAS ESTRICTAS:
     - SOLO recomienda recetas del CONTEXTO - NO inventes recetas
     - Copia el nombre EXACTO y la URL EXACTA de cada receta
     - Si una receta usa al menos 1 ingrediente del usuario, es válida
-    - CRÍTICO: Para ingredientes con URL en el contexto, copia la URL EXACTA del formato [Ingrediente](http://localhost:4000/graph/xxx) - NO inventes IDs
-    - Si un ingrediente NO tiene URL en el contexto, NO crees un enlace para él
+    - CRÍTICO: Para productos ERP, copia EXACTAMENTE los que aparecen en el contexto - NO inventes productos ni IDs
+    - Si un ingrediente NO tiene productos ERP listados, menciona solo el ingrediente genérico
 
     FORMATO REQUERIDO PARA CADA RECETA RECOMENDADA:
     ## [Nombre Exacto de la Receta] SIN LA URL QUE VA DESPUÉS
-    - **Ingredientes que tienes:** [lista los ingredientes disponibles del usuario que se usan, con enlaces SOLO si aparecen en el contexto]
-    - **Ingredientes adicionales:** [lista los que necesita comprar con enlaces SOLO si aparecen en el contexto]
-    - **Tiempo aprox:** [si está disponible en el contexto]
-    - **Porciones:** [si está disponible en el contexto]
-    - **Informacion nutricional:** [si está disponible en el contexto]
-    - [Breve descripción atractiva de la receta y por qué es perfecta para el usuario]
-    - 🛒 **Lista de compras:** [ingredientes con enlaces SOLO si la URL aparece en el contexto]
+
+    **Ingredientes que tienes:**
+    • **[Ingrediente 1 que tiene]**
+      - [Producto ERP de Lidl](URL exacta)
+      - [Otro producto ERP](URL exacta)
+    • **[Ingrediente 2 que tiene]**
+      - [Producto ERP de Lidl](URL exacta)
+
+    **Ingredientes adicionales necesarios:**
+    • **[Ingrediente faltante 1]**
+      - [Producto ERP de Lidl](URL exacta)
+      - [Otro producto ERP](URL exacta)
+    • **[Ingrediente faltante 2]**
+      - [Producto ERP de Lidl](URL exacta)
+
+    **Tiempo aprox:** [si está disponible]
+    **Porciones:** [si está disponible]
+    **Información nutricional:** [si está disponible]
+
+    [Breve descripción atractiva]
+
+    🛒 **Lista de compras:**
+    • **[Ingrediente 1]**
+      - [Producto ERP 1](URL)
+      - [Producto ERP 2](URL)
+    • **[Ingrediente 2]**
+      - [Producto ERP](URL)
+
     🔗 **Ver receta completa:** [URL EXACTA del contexto]
 
     ===== CONTEXTO (Recetas disponibles) =====
