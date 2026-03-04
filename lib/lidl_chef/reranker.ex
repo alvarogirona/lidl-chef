@@ -7,28 +7,19 @@ defmodule LidlChef.Reranker do
 
   ## Options
 
-  - `:threshold` - Minimum score for a chunk to be included (default: 5)
+  - `:threshold` - Minimum score for a chunk to be included (default from config)
   - `:concurrency` - Max parallel requests to LLM server (default: 10)
-  - `:base_url` - Base URL for the LLM server (default: "http://127.0.0.1:8080")
+  - `:base_url` - Base URL for the LLM server (default from config)
   """
 
   @behaviour Arcana.Agent.Reranker
   require Logger
 
-  @model "qwen3-reranker-0.6b"
-  @base_url "http://127.0.0.1:1234"
-  @default_threshold 5
-  @default_timeout :infinity
-
-  # Req configuration for HTTP requests
-  # Req automatically handles connection pooling internally
-  defp req_client(base_url) do
-    Req.new(
-      base_url: base_url,
-      receive_timeout: @default_timeout,
-      retry: false
-    )
-  end
+  defp reranker_cfg, do: Application.get_env(:lidl_chef, :reranker, [])
+  defp default_base_url, do: Keyword.get(reranker_cfg(), :base_url, "http://127.0.0.1:1234")
+  defp default_model, do: Keyword.get(reranker_cfg(), :model, "qwen3-reranker-0.6b")
+  defp default_threshold, do: Keyword.get(reranker_cfg(), :threshold, 5)
+  defp default_timeout, do: Keyword.get(reranker_cfg(), :timeout, :infinity)
 
   # Qwen3 reranker models use chain-of-thought reasoning
   # The model thinks in reasoning_content and outputs final answer in content
@@ -60,9 +51,9 @@ defmodule LidlChef.Reranker do
   def rerank(_question, [], _opts), do: {:ok, []}
 
   def rerank(question, chunks, opts) do
-    threshold = Keyword.get(opts, :threshold, @default_threshold)
+    threshold = Keyword.get(opts, :threshold, default_threshold())
     concurrency = Keyword.get(opts, :concurrency, 10)
-    base_url = Keyword.get(opts, :base_url, @base_url)
+    base_url = Keyword.get(opts, :base_url, default_base_url())
 
     Logger.info(
       "[Reranker] Received #{length(chunks)} chunks to rerank (concurrency: #{concurrency}, base_url: #{base_url})"
@@ -82,7 +73,7 @@ defmodule LidlChef.Reranker do
           {chunk, score}
         end,
         max_concurrency: concurrency,
-        timeout: @default_timeout,
+        timeout: default_timeout(),
         ordered: false
       )
       |> Enum.reduce([], fn
@@ -113,49 +104,26 @@ defmodule LidlChef.Reranker do
   end
 
   defp get_score(prompt, base_url) do
-    body = %{
-      model: @model,
-      messages: [
-        %{role: "user", content: prompt}
-      ],
+    model = default_model()
+    timeout = default_timeout()
+    model_spec = "openai:" <> model
+
+    req_opts = [
+      base_url: "#{base_url}/v1",
       temperature: 0.0,
-      max_tokens: 500
-    }
+      max_tokens: 500,
+      req_http_options: [receive_timeout: timeout, pool_timeout: timeout]
+    ]
 
-    case Req.post(req_client(base_url), url: "/v1/chat/completions", json: body) do
-      {:ok, %Req.Response{status: 200, body: response_body}} ->
-        parse_reranker_response(response_body)
-
-      {:ok, %Req.Response{status: status, body: error_body}} ->
-        Logger.error("[Reranker] HTTP error #{status}: #{inspect(error_body)}")
-        0
+    case ReqLLM.generate_text(model_spec, prompt, req_opts) do
+      {:ok, response} ->
+        text = ReqLLM.Response.text(response) || ""
+        parse_score_from_text(text) || 0
 
       {:error, reason} ->
         Logger.error("[Reranker] Request error: #{inspect(reason)}")
         0
     end
-  end
-
-  defp parse_reranker_response(response_body) do
-    # qwen3-reranker outputs score in "content" field and reasoning in "reasoning_content"
-    choice =
-      response_body
-      |> Map.get("choices", [])
-      |> List.first()
-      |> Map.get("message", %{})
-
-    content = Map.get(choice, "content", "")
-    reasoning_content = Map.get(choice, "reasoning_content", "")
-
-    # Logger.info(
-    #   "[Reranker] Content: #{inspect(content)}, Reasoning: #{inspect(reasoning_content)}"
-    # )
-
-    # Try to extract score from content first, then from reasoning
-    score = parse_score_from_text(content) || parse_score_from_text(reasoning_content) || 0
-
-    # Logger.info("[Reranker] Parsed score: #{score}")
-    score
   end
 
   defp parse_score_from_text(nil), do: nil

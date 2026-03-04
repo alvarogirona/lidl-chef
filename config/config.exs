@@ -98,6 +98,50 @@ config :arcana,
     extractor: Arcana.Graph.GraphExtractor.LLM
   ]
 
+config :lidl_chef, :llm,
+  base_url: System.get_env("LM_STUDIO_URL", "http://127.0.0.1:1234"),
+  model: "qwen/qwen3-4b-2507",
+  timeout: 600_000
+
+config :lidl_chef, :embedder,
+  base_url: System.get_env("LM_STUDIO_URL", "http://127.0.0.1:1234"),
+  model: "text-embedding-qwen3-embedding-0.6b",
+  timeout: 120_000
+
+config :lidl_chef, :reranker,
+  base_url: System.get_env("LM_STUDIO_URL", "http://127.0.0.1:1234"),
+  model: "qwen3-reranker-0.6b",
+  threshold: 5,
+  timeout: :infinity
+
+# LLM DB
+config :llm_db,
+  custom: %{
+    openai: [
+      name: "LLaMA.cpp",
+      base_url: System.get_env("LLAMA_CPP_URL", "http://localhost:8080"),
+      models: %{
+        "Qwen3.5-35B-A3B-Q5_K_M:Instruct-General" => %{
+          capabilities: %{chat: true, streaming: %{text: true}}
+        },
+        "Qwen3-Next-80B-A3B-Instruct-UD-Q4_K_XL" => %{
+          capabilities: %{chat: true, streaming: %{text: true}}
+        }
+      }
+    ],
+    openai: [
+      name: "LM Studio",
+      base_url: System.get_env("LM_STUDIO_URL", "http://localhost:1234"),
+      models: %{
+        "qwen/qwen3-4b-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
+        "qwen/qwen3-4b-thinking-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
+        "qwen3-4b-instruct-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
+        "qwen3-reranker-0.6b" => %{capabilities: %{chat: true}},
+        "text-embedding-qwen3-embedding-0.6b" => %{capabilities: %{embeddings: true}}
+      }
+    ]
+  }
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"
