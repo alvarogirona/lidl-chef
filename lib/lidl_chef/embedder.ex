@@ -12,7 +12,7 @@ defmodule LidlChef.Embedder do
 
   @base_url "http://127.0.0.1:1234"
   @model "text-embedding-qwen3-embedding-0.6b"
-  @default_timeout 60_000
+  @default_timeout 120_000
 
   @doc """
   Generate an embedding for the given text using the local LM Studio embedding model.

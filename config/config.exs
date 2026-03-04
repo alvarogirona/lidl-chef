@@ -64,6 +64,15 @@ config :logger, :default_formatter,
 # Use Jason for JSON parsing in Phoenix
 config :phoenix, :json_library, Jason
 
+config :lidl_chef, :finch_pools,
+  default: [
+    conn_opts: [timeout: 6000_000],
+    protocol: :http1,
+    size: 10,
+    count: 1,
+    conn_max_idle_time: 3000_000
+  ]
+
 # Configure Nx backend for EXLA (AMD hardware)
 config :nx,
   default_backend: EXLA.Backend,

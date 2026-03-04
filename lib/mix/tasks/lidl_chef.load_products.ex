@@ -6,6 +6,8 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
   processes each product, and ingests them into Arcana with GraphRAG
   enabled for entity extraction.
 
+  Supports parallel processing and checkpointing for large datasets.
+
   ## Usage
 
       # Load all products with default settings
@@ -20,6 +22,15 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
       # Clear existing products before loading
       mix lidl_chef.load_products --clear
 
+      # Resume from last checkpoint
+      mix lidl_chef.load_products --resume
+
+      # Start from a specific index
+      mix lidl_chef.load_products --start-from 5000
+
+      # Clear checkpoint file
+      mix lidl_chef.load_products --clear-checkpoint
+
   """
   use Mix.Task
 
@@ -30,7 +41,10 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
   @switches [
     batch_size: :integer,
     no_graph: :boolean,
-    clear: :boolean
+    clear: :boolean,
+    start_from: :integer,
+    resume: :boolean,
+    clear_checkpoint: :boolean
   ]
 
   @impl Mix.Task
@@ -47,19 +61,35 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
     batch_size = Keyword.get(opts, :batch_size, 50)
     enable_graph = not Keyword.get(opts, :no_graph, false)
     clear_first = Keyword.get(opts, :clear, false)
+    start_from = Keyword.get(opts, :start_from, 0)
+    resume = Keyword.get(opts, :resume, false)
+    clear_checkpoint = Keyword.get(opts, :clear_checkpoint, false)
+
+    if clear_checkpoint do
+      Mix.shell().info("Clearing checkpoint...")
+      IngestProducts.clear_checkpoint()
+    end
 
     if clear_first do
       Mix.shell().info("Clearing existing products collection...")
       LidlChef.Products.clear_collection()
+      IngestProducts.clear_checkpoint()
+    end
+
+    start_info = cond do
+      resume -> "resuming from checkpoint"
+      start_from > 0 -> "starting from index #{start_from}"
+      true -> "starting from beginning"
     end
 
     Mix.shell().info("""
     Loading Lidl products...
       Batch size: #{batch_size}
       GraphRAG: #{if enable_graph, do: "enabled", else: "disabled"}
+      Mode: #{start_info}
     """)
 
-    case load_products_from_json(batch_size, enable_graph) do
+    case load_products_from_json(batch_size, enable_graph, start_from, resume) do
       {:ok, result} ->
         Mix.shell().info("""
 
@@ -87,7 +117,7 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
     end
   end
 
-  defp load_products_from_json(batch_size, enable_graph) do
+  defp load_products_from_json(batch_size, enable_graph, start_from, resume) do
     json_path = find_products_json_path()
 
     Mix.shell().info("Loading products from #{json_path}")
@@ -97,7 +127,12 @@ defmodule Mix.Tasks.LidlChef.LoadProducts do
         case Jason.decode(content) do
           {:ok, products} when is_list(products) ->
             Mix.shell().info("Found #{length(products)} products in JSON file")
-            IngestProducts.process_products(products, batch_size: batch_size, graph: enable_graph)
+            IngestProducts.process_products(products,
+              batch_size: batch_size,
+              graph: enable_graph,
+              start_from: start_from,
+              resume: resume
+            )
 
           {:ok, _} ->
             {:error, :invalid_json_structure}

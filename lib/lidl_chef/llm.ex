@@ -1,16 +1,24 @@
 defmodule LidlChef.LLM do
   require Logger
+
   @moduledoc """
   LLM client for connecting to LM Studio running locally.
 
   Uses the OpenAI-compatible API provided by LM Studio at http://127.0.0.1:1234
   with the qwen/qwen3-next-80b model.
   """
-
   @base_url "http://127.0.0.1:1234"
-  # @model "qwen/qwen3-30b-a3b-2507"
   @model "qwen/qwen3-4b-2507"
-  @default_timeout 300_000
+  @default_timeout 600_000
+
+  defp req_client do
+    Req.new(
+      base_url: @base_url,
+      receive_timeout: @default_timeout,
+      pool_timeout: @default_timeout,
+      retry: false
+    )
+  end
 
   @doc """
   Complete a prompt using the local LM Studio LLM.
@@ -19,7 +27,6 @@ defmodule LidlChef.LLM do
   """
   @spec complete(String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def complete(prompt, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
     model = Keyword.get(opts, :model, @model)
     temperature = Keyword.get(opts, :temperature, 0.7)
     max_tokens = Keyword.get(opts, :max_tokens, 4096 * 4)
@@ -33,12 +40,7 @@ defmodule LidlChef.LLM do
       max_tokens: max_tokens
     }
 
-    case Req.post("#{@base_url}/v1/chat/completions",
-           json: body,
-           receive_timeout: timeout,
-           pool_timeout: timeout,
-           connect_options: [timeout: timeout]
-         ) do
+    case Req.post(req_client(), url: "/v1/chat/completions", json: body) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         response =
           body
@@ -82,8 +84,7 @@ defmodule LidlChef.LLM do
     req_http_options =
       [
         receive_timeout: timeout,
-        pool_timeout: timeout,
-        connect_options: [timeout: timeout]
+        pool_timeout: timeout
       ]
       |> Keyword.merge(Keyword.get(opts, :req_http_options, []))
 
@@ -95,7 +96,9 @@ defmodule LidlChef.LLM do
         temperature: temperature,
         max_tokens: max_tokens,
         base_url: "#{@base_url}/v1",
-        req_http_options: req_http_options
+        req_http_options: req_http_options,
+        receive_timeout: timeout,
+        pool_timeout: timeout
       ]
       |> maybe_put_system_prompt(system_prompt)
 
@@ -122,7 +125,6 @@ defmodule LidlChef.LLM do
   @spec complete_with_system(String.t(), String.t(), keyword()) ::
           {:ok, String.t()} | {:error, term()}
   def complete_with_system(system_prompt, user_prompt, opts \\ []) do
-    timeout = Keyword.get(opts, :timeout, @default_timeout)
     model = Keyword.get(opts, :model, @model)
     temperature = Keyword.get(opts, :temperature, 0.7)
     max_tokens = Keyword.get(opts, :max_tokens, 4096)
@@ -137,12 +139,7 @@ defmodule LidlChef.LLM do
       max_tokens: max_tokens
     }
 
-    case Req.post("#{@base_url}/v1/chat/completions",
-           json: body,
-           receive_timeout: timeout,
-           pool_timeout: timeout,
-           connect_options: [timeout: timeout]
-         ) do
+    case Req.post(req_client(), url: "/v1/chat/completions", json: body) do
       {:ok, %Req.Response{status: 200, body: body}} ->
         response =
           body
@@ -257,7 +254,9 @@ defmodule LidlChef.LLM do
         name: "OpenAI-compatible (LM Studio)",
         models: %{
           "qwen/qwen3-4b-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
-          "qwen/qwen3-4b-thinking-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}}
+          "qwen/qwen3-4b-thinking-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
+          "qwen3-4b-instruct-2507" => %{capabilities: %{chat: true, streaming: %{text: true}}},
+          "Qwen3-Next-80B-A3B-Instruct-UD-Q4_K_XL" => %{capabilities: %{chat: true, streaming: %{text: true}}}
         }
       ]
     }
