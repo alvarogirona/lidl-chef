@@ -75,9 +75,10 @@ defmodule LidlChef.Graph.ProductExtractor do
     ## Texto a analizar:
     #{text}
 
-    ## Tipos de entidades para el catalogo de productos:
-    - wawiId: Identificador interno del producto
-    - productErpName: El producto principal que se vende basado en su erpName (ejemplo, "Croissant brioche", "Ensalada de pasta rúcula").
+    ## Tipos de entidades para el catalogo de productos
+
+    EXTRAE SOLO ESTOS TIPOS DE ENTIDADES:
+    - wawiId: Identificador interno del producto, es un identificador numerico y viene en el campo `wawi_id` del texto del producto.
     - productTitle: El título de un producto. Múltiples erpNames pueden compartir el mismo título.
     - brand: Nombre de la marca o fabricante si se menciona
     - ingredient: Ingredientes individuales (ejemplo, "harina de trigo", "azúcar", "aceite de girasol")
@@ -85,11 +86,17 @@ defmodule LidlChef.Graph.ProductExtractor do
     - origin: Origen geográfico o lugar de producción (ejemplo, "España", "Andalucía")
     - certification: Certificaciones o estándares de calidad (ejemplo, "RSPO", "Ecológico", "ISO")
     - category: Categoría o línea de producto (ejemplo, "Alimentación", "Panadería", "Fresco")
-    - identifier: Códigos o identificadores internos del producto (ejemplo, Wawi ID)
+    - identifier: Códigos o identificadores internos del producto (Cualquier identificador que no sea el wawiId)
     - nutrient: Componentes nutricionales o declaraciones (ejemplo, "proteínas", "carbohidratos")
 
-    ## Tipos de relaciones a extraer:
-    - HAS_WAWI_ID: Las entidades ProductErpName tienen un wawiId.
+    La entidad de tipo wawiId es la entidad principal del producto y debe incluir en sus metadatos el `productErpName` que es el nombre del producto en el ERP de Lidl.
+    No extraigas metadatos para otra entidad que no sea el wawiId.
+    No extraigas entidades que no estén claramente identificadas en el texto. Si no se menciona una entidad, no la inventes.
+    No extraigas entidad para `productErpName`, ese es un metadato que se asocia a la entidad con tipo `wawiId` y se muestra al usuario, pero no es una entidad en sí misma.
+
+    ## Tipos de relaciones a extraer
+
+    EXTRAE SOLO ESTOS TIPOS DE RELACIONES:
     - HAS_BRAND: El producto tiene una marca específica
     - HAS_TITLE: Relación de ProductErpName a ProductTitle
     - HAS_ERP_NAME: La entidad ProductTitle tiene un erpName específico
@@ -114,7 +121,8 @@ defmodule LidlChef.Graph.ProductExtractor do
     4. Busca información de origen (país, región, lugar de producción)
     5. Extrae certificaciones (RSPO, etiquetas ecológicas, estándares de calidad)
     6. Identifica la categoría/línea de producto
-    7. Extrae el Wawi ID u otros identificadores (de la línea "ID Interno"), esos están vinculados al productErpName.
+    7. Extrae el Wawi ID u otros identificadores (de la línea "ID Interno").
+      7.1 El wawiId en su metadata debe incluir el productErpName.
     8. Crea relaciones que muestren cómo se conectan las entidades
     9. Usa strength 9-10 para relaciones explícitas (contiene alérgeno, tiene ingrediente)
     10. Usa strength 6-8 para relaciones contextuales (producido en, pertenece a categoría)
@@ -128,8 +136,9 @@ defmodule LidlChef.Graph.ProductExtractor do
         {
           "name": "Entity Name",
           "type": "type",
-          "description": "Brief context"
-        }
+          "description": "Brief context",
+          "metadata": {"some_metadata_key": "some_metadata_value", "another_key": 123}
+        },
       ],
       "relationships": [
         {
@@ -191,7 +200,8 @@ defmodule LidlChef.Graph.ProductExtractor do
     %{
       name: truncate_string(Map.get(entity, "name"), 250),
       type: normalize_type(Map.get(entity, "type")),
-      description: Map.get(entity, "description")
+      description: Map.get(entity, "description"),
+      metadata: Map.get(entity, "metadata", %{})
     }
   end
 
